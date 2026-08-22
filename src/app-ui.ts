@@ -206,12 +206,76 @@ export const startApp = async (): Promise<void> => {
   const avatarColor = (name: string): number => [...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 6;
   const formatDate = (value: string): string => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(value));
 
+  const studentSuccessRate = (studentId: string, competencies: Competency[]): number | null => {
+    const statuses = competencies.map((competency) => state.competencyStatuses.find((item) =>
+      item.studentId === studentId && item.competencyId === competency.id)?.status ?? CompetencyStatus.NotTaken);
+    const passed = statuses.filter((status) => status !== CompetencyStatus.NotTaken);
+    if (!passed.length) return null;
+    return passed.filter((status) => status === CompetencyStatus.Validated).length / passed.length;
+  };
+
+  const studentSuccessLabel = (value: number | null): string =>
+    value === null ? '—' : `${Math.round(value * 100)} %`;
+
+  const groupTreeCompetencies = (groupId: string): Competency[] => {
+    const groupIds = new Set<string>();
+    const addGroup = (id: string): void => {
+      groupIds.add(id);
+      state.groups.filter((group) => group.parentGroupId === id).forEach((group) => addGroup(group.id));
+    };
+    addGroup(groupId);
+    return state.competencies.filter((competency) => competency.groupId && groupIds.has(competency.groupId));
+  };
+
+  const evaluationGroupColorIndex = (subjectId: string, groupId: string): number => {
+    const evaluationGroupIds: string[] = [];
+    competenciesForSubject(subjectId).forEach((competency) => {
+      if (competency.groupId && !evaluationGroupIds.includes(competency.groupId)) evaluationGroupIds.push(competency.groupId);
+    });
+    const directIndex = evaluationGroupIds.indexOf(groupId);
+    if (directIndex >= 0) return directIndex % 8;
+    const descendantIndex = evaluationGroupIds.findIndex((candidateId) => {
+      let candidate = state.groups.find((group) => group.id === candidateId);
+      while (candidate?.parentGroupId) {
+        if (candidate.parentGroupId === groupId) return true;
+        candidate = state.groups.find((group) => group.id === candidate?.parentGroupId);
+      }
+      return false;
+    });
+    return Math.max(0, descendantIndex) % 8;
+  };
+
+  const studentSuccessGroup = (studentId: string, group: CompetencyGroup): string => {
+    const children = state.groups.filter((item) => item.parentGroupId === group.id);
+    const rate = studentSuccessRate(studentId, groupTreeCompetencies(group.id));
+    const colorClass = `evaluation-group-color-${evaluationGroupColorIndex(group.subjectId, group.id)}`;
+    return `<section class="student-success-group ${colorClass}">
+      <div class="student-success-cell"><span>${escapeHtml(group.name)}</span><strong>${studentSuccessLabel(rate)}</strong></div>
+      ${children.length ? `<div class="student-success-children">${children.map((child) => studentSuccessGroup(studentId, child)).join('')}</div>` : ''}
+    </section>`;
+  };
+
+  const studentSuccessOverview = (student: Student): string => `<div class="student-success-overview">
+    ${state.subjects.map((subject) => {
+      const subjectCompetencies = state.competencies.filter((competency) => competency.subjectId === subject.id);
+      const topGroups = state.groups.filter((group) => group.subjectId === subject.id && !group.parentGroupId);
+      const ungrouped = subjectCompetencies.filter((competency) => !competency.groupId);
+      const subjectRate = studentSuccessRate(student.id, subjectCompetencies);
+      return `<section class="student-success-subject">
+        <div class="student-success-subject-cell"><span>${escapeHtml(subject.name)}</span><strong>${studentSuccessLabel(subjectRate)}</strong></div>
+        ${topGroups.length || ungrouped.length ? `<div class="student-success-groups">${topGroups.map((group) => studentSuccessGroup(student.id, group)).join('')}${ungrouped.length ? `<section class="student-success-group evaluation-group-color-${topGroups.length % 8}"><div class="student-success-cell"><span>Sans groupe</span><strong>${studentSuccessLabel(studentSuccessRate(student.id, ungrouped))}</strong></div></section>` : ''}</div>` : ''}
+      </section>`;
+    }).join('')}
+  </div>`;
+
   const studentDetail = (student?: Student): string => {
     if (!student) return `<aside class="student-detail empty-detail">${icons.users}<p>Sélectionnez un élève</p></aside>`;
     const notes = [...student.manualNotes].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return `<aside class="student-detail">
       <div class="detail-topbar"><span>Fiche élève</span><div><button class="icon-button" data-action="edit-student" data-id="${student.id}">${icons.edit}</button><button class="icon-button danger" data-action="delete-student" data-id="${student.id}">${icons.trash}</button></div></div>
       <div class="student-identity"><div class="avatar large avatar-${avatarColor(student.firstName)}">${escapeHtml(initials(student.firstName))}</div><div><h2>${escapeHtml(student.firstName)}</h2><p>${notes.length} note${notes.length > 1 ? 's' : ''} personnelle${notes.length > 1 ? 's' : ''}</p></div></div>
+      <div class="detail-section-heading"><div><h3>Réussite par domaine</h3><p>Matières, groupes et sous-groupes</p></div></div>
+      ${studentSuccessOverview(student)}
       <div class="detail-section-heading"><div><h3>Notes de suivi</h3><p>Observations privées et rappels</p></div><button class="secondary-button compact" data-action="new-note" data-id="${student.id}">${icons.plus} Ajouter</button></div>
       <div class="notes-list">${notes.map((note) => `<article class="note-card"><div class="note-meta"><span>${formatDate(note.createdAt)}</span><button class="icon-button subtle danger" data-action="delete-note" data-id="${note.id}" data-student-id="${student.id}">${icons.trash}</button></div><p>${escapeHtml(note.text)}</p></article>`).join('')}${notes.length ? '' : `<div class="notes-empty">${icons.note}<p>Aucune note pour le moment.</p><button class="text-button" data-action="new-note" data-id="${student.id}">Écrire une première note</button></div>`}</div>
     </aside>`;
