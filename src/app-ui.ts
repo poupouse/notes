@@ -8,6 +8,7 @@ import {
   type CellKeyDownEvent,
   type GridApi,
   type GridOptions,
+  type IHeaderComp,
   type IHeaderParams,
   type ICellRendererParams,
 } from 'ag-grid-community';
@@ -349,8 +350,11 @@ export const startApp = async (): Promise<void> => {
     api.refreshCells({ columns: [competencyId, 'subjectAverage'], force: true });
   };
 
-  const competencyHeader = (competencyId: string) =>
-    (params: IHeaderParams<EvaluationRow>): HTMLElement => {
+  class CompetencyHeaderComponent implements IHeaderComp {
+    private gui!: HTMLElement;
+
+    public init(params: IHeaderParams<EvaluationRow> & { competencyId?: string }): void {
+      const competencyId = params.competencyId;
       const competency = state.competencies.find((item) => item.id === competencyId);
       const wrapper = document.createElement('div');
       wrapper.className = 'competency-grid-header';
@@ -369,7 +373,7 @@ export const startApp = async (): Promise<void> => {
       menu.addEventListener('change', () => {
         const action = menu.value;
         menu.value = '';
-        if (!action) return;
+        if (!action || !competencyId) return;
         const label = action === 'absent' ? 'absents' : 'non passés (NE)';
         if (!window.confirm(`Marquer tous les élèves ${label} pour ${code.textContent} ?`)) return;
         setCompetencyStatusForAll(
@@ -380,8 +384,17 @@ export const startApp = async (): Promise<void> => {
       });
 
       wrapper.append(code, menu);
-      return wrapper;
-    };
+      this.gui = wrapper;
+    }
+
+    public getGui(): HTMLElement {
+      return this.gui;
+    }
+
+    public refresh(): boolean {
+      return false;
+    }
+  }
 
   const handleEvaluationKey = (event: CellKeyDownEvent<EvaluationRow>): void => {
     if (event.node.rowPinned || !event.data) return;
@@ -412,7 +425,8 @@ export const startApp = async (): Promise<void> => {
       headerTooltip: competency
         ? competency.name
         : undefined,
-      headerComponent: competencyHeader(competencyId),
+      headerComponent: CompetencyHeaderComponent,
+      headerComponentParams: { competencyId },
       minWidth: 96,
       width: 108,
       editable: false,
