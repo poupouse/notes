@@ -40,8 +40,9 @@
 .competency-grid-header-menu{width:22px;height:22px;flex:0 0 auto;padding:0;color:#5f6c64;background:#e7ede9;border:1px solid #d1dbd5;border-radius:5px;font-size:13px;line-height:1;cursor:pointer}
 .competency-grid-header-menu:hover,.competency-grid-header-menu:focus{color:#294c3f;background:#dce8e1;border-color:#a9beb3;outline:0}
 .competency-grid-header-popover{width:180px;margin:0;padding:4px;position:fixed;color:#3f4942;background:#fff;border:1px solid #ccd6d0;border-radius:7px;box-shadow:0 8px 24px rgba(35,48,40,.18)}
+.competency-grid-header-popover:popover-open{display:flex;flex-direction:column;gap:2px;overflow:hidden}
 .competency-grid-header-popover::backdrop{background:transparent}
-.competency-grid-header-popover button{width:100%;padding:7px 9px;color:inherit;background:transparent;border:0;border-radius:5px;font:600 10px Inter,ui-sans-serif,"Segoe UI",sans-serif;text-align:left;cursor:pointer}
+.competency-grid-header-popover button{width:100%;display:block;box-sizing:border-box;flex:0 0 auto;padding:7px 9px;color:inherit;background:transparent;border:0;border-radius:5px;font:600 10px Inter,ui-sans-serif,"Segoe UI",sans-serif;text-align:left;white-space:nowrap;cursor:pointer}
 .competency-grid-header-popover button:hover,.competency-grid-header-popover button:focus{color:#294c3f;background:#edf3ef;outline:0}
 .evaluation-grid .ag-pinned-left-header .ag-header-cell-text{font-family:Inter,ui-sans-serif,"Segoe UI",sans-serif;font-size:9px}
 .evaluation-grid .ag-pinned-left-header,.evaluation-grid .ag-pinned-left-cols-container{box-shadow:5px 0 14px rgba(40,49,43,.06)}
