@@ -61,10 +61,17 @@ const initialState: AppState = {
   competencyStatuses: [],
 };
 
-export const loadAppState = (): AppState => {
+export const loadAppState = async (): Promise<AppState> => {
   try {
+    const sqliteState = await window.storage.loadSnapshot();
+    if (sqliteState) return sqliteState;
+
     const savedState = localStorage.getItem(STORAGE_KEY);
-    if (!savedState) return cloneInitialState();
+    if (!savedState) {
+      const state = cloneInitialState();
+      await window.storage.saveSnapshot(state);
+      return state;
+    }
 
     const parsedState = JSON.parse(savedState) as Partial<AppState>;
     if (
@@ -73,10 +80,12 @@ export const loadAppState = (): AppState => {
       !Array.isArray(parsedState.competencies) ||
       !Array.isArray(parsedState.students)
     ) {
-      return cloneInitialState();
+      const state = cloneInitialState();
+      await window.storage.saveSnapshot(state);
+      return state;
     }
 
-    return {
+    const state = {
       subjects: parsedState.subjects,
       groups: parsedState.groups,
       competencies: parsedState.competencies,
@@ -85,11 +94,13 @@ export const loadAppState = (): AppState => {
         ? parsedState.competencyStatuses
         : [],
     };
+    await window.storage.saveSnapshot(state);
+    localStorage.removeItem(STORAGE_KEY);
+    return state;
   } catch {
     return cloneInitialState();
   }
 };
 
-export const saveAppState = (state: AppState): void => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-};
+export const saveAppState = (state: AppState): Promise<void> =>
+  window.storage.saveSnapshot(state);

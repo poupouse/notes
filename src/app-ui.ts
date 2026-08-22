@@ -13,7 +13,7 @@ import {
 
 import { loadAppState, saveAppState, type AppState } from './app-state';
 import { CompetencyStatus } from './domain';
-import type { CompetencyGroup, Student } from './domain';
+import type { Competency, CompetencyGroup, Student } from './domain';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -22,7 +22,8 @@ type Page = 'competencies' | 'students' | 'evaluations';
 interface EvaluationRow {
   studentId: string;
   studentName: string;
-  [competencyId: string]: string;
+  subjectAverage?: number | null;
+  [competencyId: string]: string | number | null | undefined;
 }
 
 const svg = (paths: string): string =>
@@ -61,26 +62,29 @@ const evaluationTheme = themeQuartz.withParams({
   borderColor: '#e3e3dd',
   borderRadius: 8,
   fontFamily: 'Inter, ui-sans-serif, Segoe UI, sans-serif',
-  fontSize: 12,
+  fontSize: 11,
   foregroundColor: '#353a35',
   headerBackgroundColor: '#f5f6f3',
   headerTextColor: '#58605a',
   rowHoverColor: '#f3f6f4',
   selectedRowBackgroundColor: '#e8f0ec',
-  spacing: 5,
+  spacing: 3,
 });
 
-export const startApp = (): void => {
+export const startApp = async (): Promise<void> => {
   const root = document.querySelector<HTMLElement>('#app');
   if (!root) throw new Error('Application root not found');
 
-  const state: AppState = loadAppState();
+  const state: AppState = await loadAppState();
   let page: Page = 'competencies';
   let selectedSubjectId = state.subjects[0]?.id ?? '';
   let selectedStudentId = state.students[0]?.id ?? '';
   let competencySearch = '';
   let studentSearch = '';
   let evaluationSearch = '';
+  let draggedCompetencyId: string | undefined;
+  let evaluationSubjectId = state.subjects.find((subject) =>
+    state.competencies.some((competency) => competency.subjectId === subject.id))?.id ?? state.subjects[0]?.id ?? '';
   let evaluationGridApi: GridApi<EvaluationRow> | undefined;
   const collapsedGroups = new Set<string>();
   const uid = (prefix: string): string => {
@@ -90,6 +94,35 @@ export const startApp = (): void => {
 
   const subjectCount = (subjectId: string): number =>
     state.competencies.filter((item) => item.subjectId === subjectId).length;
+
+  const orderedCompetencies = (items: Competency[]): Competency[] => [...items].sort((a, b) => {
+    const fallbackA = state.competencies.indexOf(a);
+    const fallbackB = state.competencies.indexOf(b);
+    const orderA = Number.isFinite(a.sortOrder) ? a.sortOrder as number : fallbackA;
+    const orderB = Number.isFinite(b.sortOrder) ? b.sortOrder as number : fallbackB;
+    return orderA - orderB || fallbackA - fallbackB;
+  });
+
+  const competenciesInGroup = (groupId?: string): Competency[] => orderedCompetencies(
+    state.competencies.filter((item) => item.subjectId === selectedSubjectId && item.groupId === groupId),
+  );
+
+  const competenciesForSubject = (subjectId: string): Competency[] => {
+    const ordered: Competency[] = [];
+    const addGroup = (group: CompetencyGroup): void => {
+      ordered.push(...orderedCompetencies(state.competencies.filter((item) => item.groupId === group.id)));
+      state.groups.filter((child) => child.parentGroupId === group.id).forEach(addGroup);
+    };
+    state.groups.filter((group) => group.subjectId === subjectId && !group.parentGroupId).forEach(addGroup);
+    ordered.push(...orderedCompetencies(state.competencies.filter((item) => item.subjectId === subjectId && !item.groupId)));
+    const orderedIds = new Set(ordered.map((item) => item.id));
+    ordered.push(...orderedCompetencies(state.competencies.filter((item) => item.subjectId === subjectId && !orderedIds.has(item.id))));
+    return ordered;
+  };
+
+  const normalizeGroupOrder = (groupId?: string): void => {
+    competenciesInGroup(groupId).forEach((item, index) => { item.sortOrder = index; });
+  };
 
   const sidebar = (): string => `
     <aside class="sidebar">
@@ -117,7 +150,9 @@ export const startApp = (): void => {
   const competencyRow = (id: string): string => {
     const item = state.competencies.find((competency) => competency.id === id);
     if (!item) return '';
-    return `<div class="competency-row"><span class="drag-handle">⠿</span><div class="competency-main"><span>${escapeHtml(item.name)}</span><small>${escapeHtml(item.nationalEducationNumber)}</small></div><div class="row-actions"><button class="icon-button subtle" data-action="edit-competency" data-id="${id}" title="Modifier">${icons.edit}</button><button class="icon-button subtle danger" data-action="delete-competency" data-id="${id}" title="Supprimer">${icons.trash}</button></div></div>`;
+    const canReorder = !competencySearch.trim();
+    const dragTitle = canReorder ? 'Déplacer la compétence' : 'Effacez la recherche pour réorganiser';
+    return `<div class="competency-row" data-competency-id="${id}"><span class="drag-handle ${canReorder ? '' : 'disabled'}" draggable="${canReorder}" data-competency-id="${id}" title="${dragTitle}" aria-label="${dragTitle}" tabindex="0">⠿</span><div class="competency-main"><span>${escapeHtml(item.name)}</span><small>${escapeHtml(item.nationalEducationNumber)}</small></div><div class="row-actions"><button class="icon-button subtle" data-action="edit-competency" data-id="${id}" title="Modifier">${icons.edit}</button><button class="icon-button subtle danger" data-action="delete-competency" data-id="${id}" title="Supprimer">${icons.trash}</button></div></div>`;
   };
 
   const groupMatches = (group: CompetencyGroup): boolean => {
@@ -131,25 +166,25 @@ export const startApp = (): void => {
   const groupCard = (group: CompetencyGroup, depth = 0): string => {
     if (!groupMatches(group)) return '';
     const query = competencySearch.trim().toLocaleLowerCase('fr');
-    const items = state.competencies.filter((item) => item.groupId === group.id && (!query || `${item.name} ${item.nationalEducationNumber}`.toLocaleLowerCase('fr').includes(query)));
+    const items = orderedCompetencies(state.competencies.filter((item) => item.groupId === group.id && (!query || `${item.name} ${item.nationalEducationNumber}`.toLocaleLowerCase('fr').includes(query))));
     const children = state.groups.filter((child) => child.parentGroupId === group.id);
     const collapsed = collapsedGroups.has(group.id) && !query;
     const count = state.competencies.filter((item) => item.groupId === group.id).length;
     return `<section class="group-card depth-${Math.min(depth, 2)}">
-      <div class="group-header"><button class="collapse-button ${collapsed ? '' : 'open'}" data-action="toggle-group" data-id="${group.id}">${icons.chevron}</button><div class="group-title"><strong>${escapeHtml(group.name)}</strong><span>${count} compétence${count > 1 ? 's' : ''}</span></div><div class="group-actions"><button class="quiet-button" data-action="new-subgroup" data-id="${group.id}">${icons.plus} Sous-groupe</button><button class="icon-button subtle" data-action="edit-group" data-id="${group.id}">${icons.edit}</button><button class="icon-button subtle danger" data-action="delete-group" data-id="${group.id}">${icons.trash}</button></div></div>
-      ${collapsed ? '' : `<div class="group-content">${items.map((item) => competencyRow(item.id)).join('')}${children.map((child) => groupCard(child, depth + 1)).join('')}<button class="add-competency-inline" data-action="new-competency" data-group-id="${group.id}">${icons.plus} Ajouter une compétence</button></div>`}
+      <div class="group-header" data-drop-group-id="${group.id}"><button class="collapse-button ${collapsed ? '' : 'open'}" data-action="toggle-group" data-id="${group.id}">${icons.chevron}</button><div class="group-title"><strong>${escapeHtml(group.name)}</strong><span>${count} compétence${count > 1 ? 's' : ''}</span></div><div class="group-actions"><button class="quiet-button" data-action="new-subgroup" data-id="${group.id}">${icons.plus} Sous-groupe</button><button class="icon-button subtle" data-action="edit-group" data-id="${group.id}">${icons.edit}</button><button class="icon-button subtle danger" data-action="delete-group" data-id="${group.id}">${icons.trash}</button></div></div>
+      ${collapsed ? '' : `<div class="group-content" data-drop-group-id="${group.id}">${items.map((item) => competencyRow(item.id)).join('')}${children.map((child) => groupCard(child, depth + 1)).join('')}<button class="add-competency-inline" data-action="new-competency" data-group-id="${group.id}">${icons.plus} Ajouter une compétence</button></div>`}
     </section>`;
   };
 
   const competenciesPage = (): string => {
     const subject = state.subjects.find((item) => item.id === selectedSubjectId);
     const groups = state.groups.filter((group) => group.subjectId === selectedSubjectId && !group.parentGroupId);
-    const ungrouped = state.competencies.filter((item) => item.subjectId === selectedSubjectId && !item.groupId);
+    const ungrouped = orderedCompetencies(state.competencies.filter((item) => item.subjectId === selectedSubjectId && !item.groupId));
     return `<main class="workspace">
       <header class="page-header"><div><p class="eyebrow">Référentiel pédagogique</p><h1>Compétences</h1><p class="subtitle">Organisez votre référentiel par matière et par domaine.</p></div><button class="primary-button" data-action="new-competency" ${subject ? '' : 'disabled'}>${icons.plus} Nouvelle compétence</button></header>
       <div class="page-tools"><label class="search-field">${icons.search}<input type="search" data-search="competencies" value="${escapeHtml(competencySearch)}" placeholder="Rechercher une compétence ou un numéro…"></label><div class="summary-chip">${icons.book} ${subjectCount(selectedSubjectId)} compétences</div></div>
       <div class="competency-layout">${subjectRail()}<div class="tree-panel">
-        ${subject ? `<div class="tree-heading"><div><span class="breadcrumb">Matières / ${escapeHtml(subject.name)}</span><h2>${escapeHtml(subject.name)}</h2></div><button class="secondary-button" data-action="new-group">${icons.plus} Nouveau groupe</button></div><div class="tree-list">${groups.map((group) => groupCard(group)).join('')}${ungrouped.length ? `<section class="group-card ungrouped"><div class="group-header"><div class="group-title"><strong>Sans groupe</strong><span>${ungrouped.length} compétence${ungrouped.length > 1 ? 's' : ''}</span></div></div><div class="group-content">${ungrouped.map((item) => competencyRow(item.id)).join('')}</div></section>` : ''}${!groups.length && !ungrouped.length ? emptyState('Une page encore blanche', 'Créez un groupe ou ajoutez votre première compétence.', 'new-group', 'Créer un groupe') : ''}</div>` : emptyState('Ajoutez une matière', 'Les compétences seront organisées dans vos matières.', 'new-subject', 'Nouvelle matière')}
+        ${subject ? `<div class="tree-heading"><div><span class="breadcrumb">Matières / ${escapeHtml(subject.name)}</span><h2>${escapeHtml(subject.name)}</h2></div><button class="secondary-button" data-action="new-group">${icons.plus} Nouveau groupe</button></div><div class="tree-list">${groups.map((group) => groupCard(group)).join('')}${ungrouped.length ? `<section class="group-card ungrouped"><div class="group-header" data-drop-group-id=""><div class="group-title"><strong>Sans groupe</strong><span>${ungrouped.length} compétence${ungrouped.length > 1 ? 's' : ''}</span></div></div><div class="group-content" data-drop-group-id="">${ungrouped.map((item) => competencyRow(item.id)).join('')}</div></section>` : ''}${!groups.length && !ungrouped.length ? emptyState('Une page encore blanche', 'Créez un groupe ou ajoutez votre première compétence.', 'new-group', 'Créer un groupe') : ''}</div>` : emptyState('Ajoutez une matière', 'Les compétences seront organisées dans vos matières.', 'new-subject', 'Nouvelle matière')}
       </div></div>
     </main>`;
   };
@@ -193,18 +228,74 @@ export const startApp = (): void => {
     .sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'))
     .map((student) => {
       const row: EvaluationRow = { studentId: student.id, studentName: student.firstName };
-      state.competencies.forEach((competency) => {
+      competenciesForSubject(evaluationSubjectId).forEach((competency) => {
         row[competency.id] = evaluationStatusLabel(student.id, competency.id);
       });
       return row;
     });
 
-  const statusRenderer = (params: ICellRendererParams<EvaluationRow, string>): HTMLElement => {
+  const statusRenderer = (params: ICellRendererParams<EvaluationRow>): HTMLElement => {
     const option = statusOptions.find((item) => item.label === params.value) ?? statusOptions[3];
     const pill = document.createElement('span');
     pill.className = `evaluation-status status-${option.className}`;
     pill.textContent = option.label;
     return pill;
+  };
+
+  const subjectAverage = (row?: EvaluationRow): number | null => {
+    if (!row) return null;
+    const competencyIds = competenciesForSubject(evaluationSubjectId).map((competency) => competency.id);
+    const countedValues = competencyIds
+      .map((competencyId) => row[competencyId])
+      .filter((status) => status !== 'Non passée');
+    if (!countedValues.length) return null;
+    const validatedCount = countedValues.filter((status) => status === 'Validée').length;
+    return validatedCount / countedValues.length;
+  };
+
+  const renderAverage = (value: number | null | undefined): HTMLElement => {
+    const container = document.createElement('div');
+    container.className = 'average-display';
+    if (value === null || value === undefined) {
+      container.classList.add('empty');
+      container.textContent = '—';
+      return container;
+    }
+    const percentage = Math.round(value * 100);
+    container.innerHTML = `<strong>${percentage} %</strong><span><i style="width:${percentage}%"></i></span>`;
+    return container;
+  };
+
+  const averageRenderer = (params: ICellRendererParams<EvaluationRow, number | null>): HTMLElement =>
+    renderAverage(params.value);
+
+  const competencyCellRenderer = (params: ICellRendererParams<EvaluationRow>): HTMLElement =>
+    params.node.rowPinned
+      ? renderAverage(typeof params.value === 'number' ? params.value : null)
+      : statusRenderer(params);
+
+  const averageFromStatuses = (statuses: CompetencyStatus[]): number | null => {
+    const countedStatuses = statuses.filter((status) => status !== CompetencyStatus.NotTaken);
+    if (!countedStatuses.length) return null;
+    return countedStatuses.filter((status) => status === CompetencyStatus.Validated).length / countedStatuses.length;
+  };
+
+  const competencyAverage = (competencyId: string): number | null =>
+    averageFromStatuses(state.students.map((student) =>
+      state.competencyStatuses.find((item) =>
+        item.studentId === student.id && item.competencyId === competencyId)?.status ?? CompetencyStatus.NotTaken));
+
+  const evaluationSummaryRow = (): EvaluationRow => {
+    const row: EvaluationRow = { studentId: 'subject-summary', studentName: 'Moyenne' };
+    const competencyIds = competenciesForSubject(evaluationSubjectId).map((competency) => competency.id);
+    competencyIds.forEach((competencyId) => {
+      row[competencyId] = competencyAverage(competencyId);
+    });
+    row.subjectAverage = averageFromStatuses(competencyIds.flatMap((competencyId) =>
+      state.students.map((student) =>
+        state.competencyStatuses.find((item) =>
+          item.studentId === student.id && item.competencyId === competencyId)?.status ?? CompetencyStatus.NotTaken)));
+    return row;
   };
 
   const saveEvaluationStatus = (event: CellValueChangedEvent<EvaluationRow, string>): void => {
@@ -227,27 +318,32 @@ export const startApp = (): void => {
       });
     }
     saveAppState(state);
+    event.api.setGridOption('pinnedBottomRowData', [evaluationSummaryRow()]);
+    event.api.refreshCells({
+      rowNodes: event.node ? [event.node] : undefined,
+      columns: ['subjectAverage'],
+      force: true,
+    });
   };
 
   const competencyColumn = (competencyId: string): ColDef<EvaluationRow> => {
     const competency = state.competencies.find((item) => item.id === competencyId);
     return {
       field: competencyId,
-      headerName: competency?.name ?? 'Compétence',
+      headerName: competency?.nationalEducationNumber ?? 'Compétence',
       headerTooltip: competency
-        ? `${competency.nationalEducationNumber} — ${competency.name}`
+        ? competency.name
         : undefined,
-      minWidth: 175,
-      width: 195,
-      editable: true,
+      minWidth: 96,
+      width: 108,
+      editable: (params) => !params.node.rowPinned,
       cellEditor: 'agSelectCellEditor',
       cellEditorParams: { values: statusOptions.map((option) => option.label) },
-      cellRenderer: statusRenderer,
+      cellRenderer: competencyCellRenderer,
       cellClass: 'evaluation-cell',
       sortable: false,
       filter: false,
-      wrapHeaderText: true,
-      autoHeaderHeight: true,
+      wrapHeaderText: false,
     };
   };
 
@@ -257,26 +353,38 @@ export const startApp = (): void => {
       headerName: 'Élève',
       pinned: 'left',
       lockPinned: true,
-      minWidth: 180,
-      width: 205,
+      minWidth: 145,
+      width: 165,
       cellClass: 'student-grid-cell',
       filter: true,
       editable: false,
     },
-    ...state.subjects
-      .map((subject): ColGroupDef<EvaluationRow> | undefined => {
-        const competencies = state.competencies.filter((item) => item.subjectId === subject.id);
-        if (!competencies.length) return undefined;
-        return {
-          headerName: subject.name,
-          marryChildren: true,
-          children: competencies.map((competency) => competencyColumn(competency.id)),
-        };
-      })
-      .filter((column): column is ColGroupDef<EvaluationRow> => Boolean(column)),
+    ...competenciesForSubject(evaluationSubjectId)
+      .map((competency) => competencyColumn(competency.id)),
+    {
+      colId: 'subjectAverage',
+      headerName: 'Moyenne',
+      headerTooltip: 'Compétences validées ÷ évaluations passées',
+      pinned: 'right',
+      lockPinned: true,
+      minWidth: 92,
+      width: 104,
+      maxWidth: 120,
+      editable: false,
+      sortable: true,
+      filter: false,
+      valueGetter: (params) => params.node.rowPinned
+        ? params.data?.subjectAverage ?? null
+        : subjectAverage(params.data),
+      cellRenderer: averageRenderer,
+      cellClass: 'average-cell',
+    },
   ];
 
-  const evaluationsPage = (): string => `
+  const evaluationsPage = (): string => {
+    const selectedSubject = state.subjects.find((subject) => subject.id === evaluationSubjectId);
+    const selectedCompetencyCount = state.competencies.filter((competency) => competency.subjectId === evaluationSubjectId).length;
+    return `
     <main class="workspace evaluation-workspace">
       <header class="page-header">
         <div><p class="eyebrow">Suivi des acquis</p><h1>Évaluation</h1><p class="subtitle">Attribuez un statut à chaque compétence, élève par élève.</p></div>
@@ -288,11 +396,18 @@ export const startApp = (): void => {
           ${statusOptions.map((option) => `<span><i class="legend-dot status-${option.className}"></i>${option.label}</span>`).join('')}
         </div>
       </div>
+      <div class="evaluation-subject-tabs" role="tablist" aria-label="Choisir une matière">
+        ${state.subjects.map((subject, index) => {
+          const count = state.competencies.filter((competency) => competency.subjectId === subject.id).length;
+          return `<button role="tab" aria-selected="${subject.id === evaluationSubjectId}" class="evaluation-subject-tab ${subject.id === evaluationSubjectId ? 'active' : ''}" data-action="select-evaluation-subject" data-id="${subject.id}"><i class="subject-dot color-${index % 5}"></i><span>${escapeHtml(subject.name)}</span><b>${count}</b></button>`;
+        }).join('')}
+      </div>
       <section class="evaluation-grid-card">
-        <div class="grid-help"><strong>${state.students.length} élèves</strong><span>${state.competencies.length} compétences</span><span>Cliquer sur une case pour changer son statut</span></div>
+        <div class="grid-help"><strong>${escapeHtml(selectedSubject?.name ?? 'Matière')}</strong><span>${state.students.length} élèves</span><span>${selectedCompetencyCount} compétence${selectedCompetencyCount > 1 ? 's' : ''}</span><span>Cliquer sur une case pour changer son statut</span></div>
         <div id="evaluation-grid" class="evaluation-grid"></div>
       </section>
     </main>`;
+  };
 
   const mountEvaluationGrid = (): void => {
     const gridElement = root.querySelector<HTMLElement>('#evaluation-grid');
@@ -300,17 +415,18 @@ export const startApp = (): void => {
     const gridOptions: GridOptions<EvaluationRow> = {
       theme: evaluationTheme,
       rowData: evaluationRows(),
+      pinnedBottomRowData: [evaluationSummaryRow()],
       columnDefs: evaluationColumns(),
       defaultColDef: { resizable: true, suppressMovable: true },
       getRowId: (params) => params.data.studentId,
-      rowHeight: 52,
-      headerHeight: 72,
-      groupHeaderHeight: 38,
+      getRowHeight: (params) => params.node.rowPinned ? 43 : 37,
+      headerHeight: 38,
       singleClickEdit: true,
       stopEditingWhenCellsLoseFocus: true,
       quickFilterText: evaluationSearch,
       onCellValueChanged: saveEvaluationStatus,
       ensureDomOrder: true,
+      tooltipShowDelay: 250,
     };
     evaluationGridApi = createGrid<EvaluationRow>(gridElement, gridOptions);
   };
@@ -327,23 +443,57 @@ export const startApp = (): void => {
     if (page === 'evaluations') window.requestAnimationFrame(mountEvaluationGrid);
   };
 
-  const persist = (): void => { saveAppState(state); render(); };
+  const persist = (): void => {
+    void saveAppState(state).catch((error: unknown) => {
+      console.error('Unable to persist application state', error);
+    });
+    render();
+  };
 
-  interface ModalOptions { eyebrow: string; title: string; fields: string; submit: string; save: (data: FormData) => void }
-  type AppDialog = HTMLDialogElement & { close: () => void; showModal: () => void };
-  const closeModal = (): void => document.querySelector<AppDialog>('#app-modal')?.close();
+  interface ModalOptions { eyebrow: string; title: string; fields: string; submit: string; destructive?: boolean; save: (data: FormData) => void }
+  let modalReturnFocus: HTMLElement | null = null;
+  const closeModal = (): void => {
+    document.querySelector<HTMLElement>('#app-modal')?.remove();
+    root.removeAttribute('inert');
+    if (modalReturnFocus?.isConnected) modalReturnFocus.focus({ preventScroll: true });
+    modalReturnFocus = null;
+  };
   const error = (message: string): void => { const element = document.querySelector('#form-error'); if (element) element.textContent = message; };
-  const field = (label: string, name: string, value = '', placeholder = ''): string => `<label class="form-field"><span>${label}</span><input name="${name}" value="${escapeHtml(value)}" placeholder="${placeholder}" required></label>`;
+  const field = (label: string, name: string, value = '', placeholder = ''): string => `<label class="form-field"><span>${label}</span><input type="text" name="${name}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" autocomplete="off" required></label>`;
 
   const modal = (options: ModalOptions): void => {
-    document.querySelector('#app-modal')?.remove();
-    document.body.insertAdjacentHTML('beforeend', `<dialog class="modal" id="app-modal"><form class="modal-card" id="modal-form"><div class="modal-header"><div><p class="eyebrow">${escapeHtml(options.eyebrow)}</p><h2>${escapeHtml(options.title)}</h2></div><button type="button" class="icon-button" data-modal-close>${icons.close}</button></div><div class="modal-content">${options.fields}<p class="form-error" id="form-error"></p></div><div class="modal-actions"><button type="button" class="secondary-button" data-modal-close>Annuler</button><button class="primary-button" type="submit">${options.submit}</button></div></form></dialog>`);
-    const dialog = document.querySelector<AppDialog>('#app-modal');
-    dialog?.showModal();
-    dialog?.addEventListener('click', (event) => { if (event.target === dialog) closeModal(); });
-    document.querySelectorAll('[data-modal-close]').forEach((button) => button.addEventListener('click', closeModal));
-    document.querySelector<HTMLFormElement>('#modal-form')?.addEventListener('submit', (event) => { event.preventDefault(); options.save(new FormData(event.currentTarget as HTMLFormElement)); });
-    window.setTimeout(() => dialog?.querySelector<HTMLElement>('input,textarea,select')?.focus(), 50);
+    closeModal();
+    modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    root.setAttribute('inert', '');
+    document.body.insertAdjacentHTML('beforeend', `<div class="modal" id="app-modal"><form class="modal-card" id="modal-form" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-header"><div><p class="eyebrow">${escapeHtml(options.eyebrow)}</p><h2 id="modal-title">${escapeHtml(options.title)}</h2></div><button type="button" class="icon-button" data-modal-close aria-label="Fermer">${icons.close}</button></div><div class="modal-content">${options.fields}<p class="form-error" id="form-error"></p></div><div class="modal-actions"><button type="button" class="secondary-button" data-modal-close>Annuler</button><button class="primary-button${options.destructive ? ' destructive-button' : ''}" type="submit">${options.submit}</button></div></form></div>`);
+    const layer = document.querySelector<HTMLElement>('#app-modal');
+    const form = layer?.querySelector<HTMLFormElement>('#modal-form');
+    layer?.addEventListener('pointerdown', (event) => { if (event.target === layer) closeModal(); });
+    layer?.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); closeModal(); } });
+    layer?.querySelectorAll('[data-modal-close]').forEach((button) => button.addEventListener('click', closeModal));
+    form?.addEventListener('submit', (event) => { event.preventDefault(); options.save(new FormData(form)); });
+    const firstControl = form?.querySelector<HTMLElement>('input,textarea,select,button[type="submit"]');
+    const focusFirstControl = (): void => {
+      if (layer?.isConnected && firstControl?.isConnected) firstControl.focus({ preventScroll: true });
+    };
+    focusFirstControl();
+    window.requestAnimationFrame(focusFirstControl);
+    layer?.addEventListener('focusout', () => {
+      window.requestAnimationFrame(() => {
+        if (layer?.isConnected && !layer.contains(document.activeElement)) focusFirstControl();
+      });
+    });
+  };
+
+  const confirmDeletion = (title: string, message: string, remove: () => void): void => {
+    modal({
+      eyebrow: 'Confirmation',
+      title,
+      fields: `<p class="confirmation-message">${escapeHtml(message)}</p>`,
+      submit: 'Supprimer',
+      destructive: true,
+      save: () => { closeModal(); remove(); },
+    });
   };
 
   const subjectModal = (id?: string): void => {
@@ -376,7 +526,17 @@ export const startApp = (): void => {
     modal({ eyebrow: 'Référentiel pédagogique', title: item ? 'Modifier la compétence' : 'Nouvelle compétence', fields: `${field('Intitulé', 'name', item?.name, 'Ex. Poser et effectuer une addition')}${field('Numéro Éducation nationale', 'code', item?.nationalEducationNumber, 'Ex. C2-MATH-08')}<label class="form-field"><span>Groupe</span><select name="groupId">${groupOptions(item?.groupId ?? preferredGroup)}</select></label>`, submit: item ? 'Enregistrer' : 'Ajouter la compétence', save: (data) => {
       const name = String(data.get('name') ?? '').trim(); const code = String(data.get('code') ?? '').trim(); const groupId = String(data.get('groupId') ?? '') || undefined;
       if (!name || !code) return error('Complétez l’intitulé et le numéro officiel.');
-      if (item) Object.assign(item, { name, nationalEducationNumber: code, groupId }); else state.competencies.push({ id: uid('competency'), subjectId: selectedSubjectId, groupId, name, nationalEducationNumber: code });
+      if (item) {
+        const previousGroupId = item.groupId;
+        Object.assign(item, { name, nationalEducationNumber: code });
+        if (previousGroupId !== groupId) {
+          item.groupId = groupId;
+          normalizeGroupOrder(previousGroupId);
+          item.sortOrder = competenciesInGroup(groupId).filter((competency) => competency.id !== item.id).length;
+        }
+      } else {
+        state.competencies.push({ id: uid('competency'), subjectId: selectedSubjectId, groupId, name, nationalEducationNumber: code, sortOrder: competenciesInGroup(groupId).length });
+      }
       closeModal(); persist();
     } });
   };
@@ -399,11 +559,33 @@ export const startApp = (): void => {
 
   const descendants = (id: string): string[] => [id, ...state.groups.filter((group) => group.parentGroupId === id).flatMap((group) => descendants(group.id))];
 
+  const clearDropIndicators = (): void => {
+    root.querySelectorAll('.drop-before,.drop-after,.drop-active,.dragging').forEach((element) => {
+      element.classList.remove('drop-before', 'drop-after', 'drop-active', 'dragging');
+    });
+  };
+
+  const moveCompetency = (competencyId: string, groupId: string | undefined, targetId?: string, afterTarget = false): boolean => {
+    const competency = state.competencies.find((item) => item.id === competencyId);
+    if (!competency || competency.subjectId !== selectedSubjectId || targetId === competencyId) return false;
+    const previousGroupId = competency.groupId;
+    const targetItems = competenciesInGroup(groupId).filter((item) => item.id !== competencyId);
+    let targetIndex = targetId ? targetItems.findIndex((item) => item.id === targetId) : targetItems.length;
+    if (targetIndex < 0) targetIndex = targetItems.length;
+    if (targetId && afterTarget) targetIndex += 1;
+    competency.groupId = groupId;
+    targetItems.splice(targetIndex, 0, competency);
+    targetItems.forEach((item, index) => { item.sortOrder = index; });
+    if (previousGroupId !== groupId) normalizeGroupOrder(previousGroupId);
+    return true;
+  };
+
   root.addEventListener('click', (event) => {
     const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action]'); if (!button) return;
     const action = button.dataset.action; const id = button.dataset.id;
     if (action === 'navigate') { page = button.dataset.page as Page; render(); }
     else if (action === 'select-subject' && id) { selectedSubjectId = id; render(); }
+    else if (action === 'select-evaluation-subject' && id) { evaluationSubjectId = id; render(); }
     else if (action === 'new-subject') subjectModal();
     else if (action === 'edit-subject' && id) subjectModal(id);
     else if (action === 'new-group') groupModal();
@@ -412,14 +594,14 @@ export const startApp = (): void => {
     else if (action === 'toggle-group' && id) { collapsedGroups.has(id) ? collapsedGroups.delete(id) : collapsedGroups.add(id); render(); }
     else if (action === 'new-competency') competencyModal(undefined, button.dataset.groupId);
     else if (action === 'edit-competency' && id) competencyModal(id);
-    else if (action === 'delete-competency' && id && window.confirm('Supprimer cette compétence ?')) { state.competencies = state.competencies.filter((item) => item.id !== id); state.competencyStatuses = state.competencyStatuses.filter((item) => item.competencyId !== id); persist(); }
-    else if (action === 'delete-group' && id && window.confirm('Supprimer ce groupe et ses sous-groupes ? Les compétences seront conservées sans groupe.')) { const ids = descendants(id); state.groups = state.groups.filter((group) => !ids.includes(group.id)); state.competencies.forEach((item) => { if (item.groupId && ids.includes(item.groupId)) item.groupId = undefined; }); persist(); }
+    else if (action === 'delete-competency' && id) confirmDeletion('Supprimer cette compétence ?', 'Les évaluations associées à cette compétence seront également supprimées.', () => { state.competencies = state.competencies.filter((item) => item.id !== id); state.competencyStatuses = state.competencyStatuses.filter((item) => item.competencyId !== id); persist(); });
+    else if (action === 'delete-group' && id) confirmDeletion('Supprimer ce groupe ?', 'Ses sous-groupes seront supprimés. Les compétences seront conservées sans groupe.', () => { const ids = descendants(id); state.groups = state.groups.filter((group) => !ids.includes(group.id)); state.competencies.forEach((item) => { if (item.groupId && ids.includes(item.groupId)) item.groupId = undefined; }); normalizeGroupOrder(); persist(); });
     else if (action === 'new-student') studentModal();
     else if (action === 'edit-student' && id) studentModal(id);
     else if (action === 'select-student' && id) { selectedStudentId = id; render(); }
     else if (action === 'new-note' && id) noteModal(id);
-    else if (action === 'delete-note' && id && button.dataset.studentId && window.confirm('Supprimer cette note ?')) { const student = state.students.find((item) => item.id === button.dataset.studentId); if (student) student.manualNotes = student.manualNotes.filter((note) => note.id !== id); persist(); }
-    else if (action === 'delete-student' && id && window.confirm('Supprimer cet élève et toutes ses notes ?')) { state.students = state.students.filter((student) => student.id !== id); state.competencyStatuses = state.competencyStatuses.filter((item) => item.studentId !== id); selectedStudentId = state.students[0]?.id ?? ''; persist(); }
+    else if (action === 'delete-note' && id && button.dataset.studentId) { const studentId = button.dataset.studentId; confirmDeletion('Supprimer cette note ?', 'Cette note de suivi ne sera plus visible.', () => { const student = state.students.find((item) => item.id === studentId); if (student) student.manualNotes = student.manualNotes.filter((note) => note.id !== id); persist(); }); }
+    else if (action === 'delete-student' && id) confirmDeletion('Supprimer cet élève ?', 'Ses notes et ses résultats seront également supprimés.', () => { state.students = state.students.filter((student) => student.id !== id); state.competencyStatuses = state.competencyStatuses.filter((item) => item.studentId !== id); selectedStudentId = state.students[0]?.id ?? ''; persist(); });
   });
 
   root.addEventListener('input', (event) => {
@@ -431,6 +613,53 @@ export const startApp = (): void => {
     }
     if (input.dataset.search === 'competencies') competencySearch = input.value; else studentSearch = input.value;
     const position = input.selectionStart ?? input.value.length; render(); const next = root.querySelector<HTMLInputElement>(`[data-search="${input.dataset.search}"]`); next?.focus(); next?.setSelectionRange(position, position);
+  });
+
+  root.addEventListener('dragstart', (event) => {
+    const dragEvent = event as DragEvent;
+    const handle = (event.target as HTMLElement).closest<HTMLElement>('.drag-handle[data-competency-id]');
+    if (!handle || competencySearch.trim()) return dragEvent.preventDefault();
+    draggedCompetencyId = handle.dataset.competencyId;
+    if (!draggedCompetencyId) return dragEvent.preventDefault();
+    dragEvent.dataTransfer?.setData('text/plain', draggedCompetencyId);
+    if (dragEvent.dataTransfer) dragEvent.dataTransfer.effectAllowed = 'move';
+    window.requestAnimationFrame(() => handle.closest('.competency-row')?.classList.add('dragging'));
+  });
+
+  root.addEventListener('dragover', (event) => {
+    if (!draggedCompetencyId) return;
+    const dragEvent = event as DragEvent;
+    const target = event.target as HTMLElement;
+    const row = target.closest<HTMLElement>('.competency-row[data-competency-id]');
+    const dropZone = (row ?? target).closest<HTMLElement>('[data-drop-group-id]');
+    if (!dropZone) return;
+    dragEvent.preventDefault();
+    if (dragEvent.dataTransfer) dragEvent.dataTransfer.dropEffect = 'move';
+    root.querySelectorAll('.drop-before,.drop-after,.drop-active').forEach((element) => element.classList.remove('drop-before', 'drop-after', 'drop-active'));
+    dropZone.classList.add('drop-active');
+    if (row && row.dataset.competencyId !== draggedCompetencyId) {
+      row.classList.add(dragEvent.clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2 ? 'drop-after' : 'drop-before');
+    }
+  });
+
+  root.addEventListener('drop', (event) => {
+    if (!draggedCompetencyId) return;
+    const dragEvent = event as DragEvent;
+    const target = event.target as HTMLElement;
+    const row = target.closest<HTMLElement>('.competency-row[data-competency-id]');
+    const dropZone = (row ?? target).closest<HTMLElement>('[data-drop-group-id]');
+    if (!dropZone) return;
+    dragEvent.preventDefault();
+    const afterTarget = Boolean(row && dragEvent.clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2);
+    const moved = moveCompetency(draggedCompetencyId, dropZone.dataset.dropGroupId || undefined, row?.dataset.competencyId, afterTarget);
+    draggedCompetencyId = undefined;
+    clearDropIndicators();
+    if (moved) persist();
+  });
+
+  root.addEventListener('dragend', () => {
+    draggedCompetencyId = undefined;
+    clearDropIndicators();
   });
 
   render();

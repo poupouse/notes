@@ -48,13 +48,14 @@ export interface Competency {
   groupId?: CompetencyGroupId;
   name: string;
 
+  /** Zero-based display position inside the competency's current group. */
+  sortOrder?: number;
+
   /** Official identifier supplied by the French Ministry of Education. */
   nationalEducationNumber: string;
 }
 
-/**
- * A test can assess one or several competencies from the same subject.
- */
+/** A named test can assess one or several competencies from one subject. */
 export interface Assessment {
   id: AssessmentId;
   subjectId: SubjectId;
@@ -83,8 +84,9 @@ export const COMPETENCY_STATUS_LABELS: Readonly<
 };
 
 /**
- * Historical many-to-many relation between a student and a competency.
- * The assessmentId tells us during which test the result was observed.
+ * Historical observation made during an assessment between a student and a
+ * competency. Persistence is append-only: later observations supersede older
+ * ones for the current matrix, without erasing the history.
  * There should be at most one record for a given
  * (studentId, assessmentId, competencyId) tuple.
  */
