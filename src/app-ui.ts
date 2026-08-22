@@ -368,14 +368,21 @@ export const startApp = async (): Promise<void> => {
       menu.className = 'competency-grid-header-menu';
       menu.setAttribute('aria-label', `Actions pour ${code.textContent}`);
       menu.title = 'Appliquer un statut à tous les élèves';
-      menu.innerHTML = '<option value="">⌄</option><option value="absent">Tous absents</option><option value="not_taken">Tous non passés (NE)</option>';
+      menu.innerHTML = '<option value="">⌄</option><option value="absent">À passer pour tous</option><option value="not_taken">Tous non passés (NE)</option>';
+      menu.addEventListener('pointerdown', (event) => {
+        event.stopPropagation();
+        menu.selectedIndex = 0;
+      });
       menu.addEventListener('click', (event) => event.stopPropagation());
       menu.addEventListener('change', () => {
         const action = menu.value;
-        menu.value = '';
+        window.setTimeout(() => {
+          menu.selectedIndex = 0;
+          menu.blur();
+        }, 0);
         if (!action || !competencyId) return;
-        const label = action === 'absent' ? 'absents' : 'non passés (NE)';
-        if (!window.confirm(`Marquer tous les élèves ${label} pour ${code.textContent} ?`)) return;
+        const label = action === 'absent' ? 'à passer' : 'non passés (NE)';
+        if (!window.confirm(`Marquer tous les élèves « ${label} » pour ${code.textContent} ?`)) return;
         setCompetencyStatusForAll(
           competencyId,
           action === 'absent' ? CompetencyStatus.Absent : CompetencyStatus.NotTaken,
@@ -487,7 +494,7 @@ export const startApp = async (): Promise<void> => {
       <div class="evaluation-tools">
         <label class="search-field">${icons.search}<input type="search" data-search="evaluations" value="${escapeHtml(evaluationSearch)}" placeholder="Rechercher un élève…"></label>
         <div class="status-legend">
-          ${statusOptions.map((option) => `<span><i class="legend-dot status-${option.className}"></i>${option.inputCode ? `<kbd>${option.inputCode}</kbd> = ${option.display} · ${option.label}` : 'Absent · menu colonne'}</span>`).join('')}
+          ${statusOptions.map((option) => `<span title="${escapeHtml(option.label)}"><i class="legend-dot status-${option.className}"></i>${option.inputCode ? `<kbd>${option.inputCode}</kbd> = ${option.display}` : 'À passer'}</span>`).join('')}
         </div>
       </div>
       <div class="evaluation-subject-tabs" role="tablist" aria-label="Choisir une matière">
