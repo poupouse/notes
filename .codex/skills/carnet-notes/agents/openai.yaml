@@ -1,0 +1,4 @@
+interface:
+  display_name: "Carnet — développement projet"
+  short_description: "Développer Carnet avec son architecture et son workflow local"
+  default_prompt: "Utilise les règles du projet Carnet pour analyser, modifier et vérifier cette application."
