@@ -364,33 +364,55 @@ export const startApp = async (): Promise<void> => {
       code.textContent = competency?.nationalEducationNumber ?? 'Compétence';
       code.title = competency?.name ?? '';
 
-      const menu = document.createElement('select');
-      menu.className = 'competency-grid-header-menu';
-      menu.setAttribute('aria-label', `Actions pour ${code.textContent}`);
-      menu.title = 'Appliquer un statut à tous les élèves';
-      menu.innerHTML = '<option value="">⌄</option><option value="absent">À passer pour tous</option><option value="not_taken">Tous non passés (NE)</option>';
-      menu.addEventListener('pointerdown', (event) => {
-        event.stopPropagation();
-        menu.selectedIndex = 0;
+      const menuButton = document.createElement('button');
+      menuButton.type = 'button';
+      menuButton.className = 'competency-grid-header-menu';
+      menuButton.setAttribute('aria-label', `Actions pour ${code.textContent}`);
+      menuButton.setAttribute('aria-haspopup', 'menu');
+      menuButton.setAttribute('aria-expanded', 'false');
+      menuButton.title = 'Appliquer un statut à tous les élèves';
+      menuButton.textContent = '⌄';
+
+      const menuPopup = document.createElement('div');
+      menuPopup.className = 'competency-grid-header-popover';
+      menuPopup.setAttribute('popover', 'auto');
+      menuPopup.setAttribute('role', 'menu');
+
+      const addBulkAction = (label: string, status: CompetencyStatus): void => {
+        const action = document.createElement('button');
+        action.type = 'button';
+        action.setAttribute('role', 'menuitem');
+        action.textContent = label;
+        action.addEventListener('click', (event) => {
+          event.stopPropagation();
+          menuPopup.hidePopover();
+          window.setTimeout(() => {
+            if (competencyId) setCompetencyStatusForAll(competencyId, status, params.api);
+          }, 0);
+        });
+        menuPopup.append(action);
+      };
+
+      addBulkAction('À passer pour tous', CompetencyStatus.Absent);
+      addBulkAction('Tous non passés (NE)', CompetencyStatus.NotTaken);
+      menuPopup.addEventListener('pointerdown', (event) => event.stopPropagation());
+      menuPopup.addEventListener('toggle', () => {
+        menuButton.setAttribute('aria-expanded', String(menuPopup.matches(':popover-open')));
       });
-      menu.addEventListener('click', (event) => event.stopPropagation());
-      menu.addEventListener('change', () => {
-        const action = menu.value;
-        window.setTimeout(() => {
-          menu.selectedIndex = 0;
-          menu.blur();
-        }, 0);
-        if (!action || !competencyId) return;
-        const label = action === 'absent' ? 'à passer' : 'non passés (NE)';
-        if (!window.confirm(`Marquer tous les élèves « ${label} » pour ${code.textContent} ?`)) return;
-        setCompetencyStatusForAll(
-          competencyId,
-          action === 'absent' ? CompetencyStatus.Absent : CompetencyStatus.NotTaken,
-          params.api,
-        );
+      menuButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+      menuButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (menuPopup.matches(':popover-open')) {
+          menuPopup.hidePopover();
+          return;
+        }
+        const bounds = menuButton.getBoundingClientRect();
+        menuPopup.style.left = `${Math.min(bounds.left, window.innerWidth - 184)}px`;
+        menuPopup.style.top = `${bounds.bottom + 4}px`;
+        menuPopup.showPopover();
       });
 
-      wrapper.append(code, menu);
+      wrapper.append(code, menuButton, menuPopup);
       this.gui = wrapper;
     }
 
