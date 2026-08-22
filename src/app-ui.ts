@@ -249,8 +249,8 @@ export const startApp = async (): Promise<void> => {
     const children = state.groups.filter((item) => item.parentGroupId === group.id);
     const rate = studentSuccessRate(studentId, groupTreeCompetencies(group.id));
     const colorClass = `evaluation-group-color-${evaluationGroupColorIndex(group.subjectId, group.id)}`;
-    return `<section class="student-success-group ${colorClass}">
-      <div class="student-success-cell"><span>${escapeHtml(group.name)}</span><strong>${studentSuccessLabel(rate)}</strong></div>
+    return `<section class="student-success-group ${children.length ? 'has-children' : colorClass}">
+      <div class="student-success-cell ${children.length ? 'student-success-parent-cell' : ''}"><span>${escapeHtml(group.name)}</span><strong>${studentSuccessLabel(rate)}</strong></div>
       ${children.length ? `<div class="student-success-children">${children.map((child) => studentSuccessGroup(studentId, child)).join('')}</div>` : ''}
     </section>`;
   };
@@ -261,9 +261,10 @@ export const startApp = async (): Promise<void> => {
       const topGroups = state.groups.filter((group) => group.subjectId === subject.id && !group.parentGroupId);
       const ungrouped = subjectCompetencies.filter((competency) => !competency.groupId);
       const subjectRate = studentSuccessRate(student.id, subjectCompetencies);
+      const columnCount = topGroups.length + (ungrouped.length ? 1 : 0);
       return `<section class="student-success-subject">
         <div class="student-success-subject-cell"><span>${escapeHtml(subject.name)}</span><strong>${studentSuccessLabel(subjectRate)}</strong></div>
-        ${topGroups.length || ungrouped.length ? `<div class="student-success-groups">${topGroups.map((group) => studentSuccessGroup(student.id, group)).join('')}${ungrouped.length ? `<section class="student-success-group evaluation-group-color-${topGroups.length % 8}"><div class="student-success-cell"><span>Sans groupe</span><strong>${studentSuccessLabel(studentSuccessRate(student.id, ungrouped))}</strong></div></section>` : ''}</div>` : ''}
+        ${columnCount ? `<div class="student-success-groups" style="--student-success-columns:${columnCount}">${topGroups.map((group) => studentSuccessGroup(student.id, group)).join('')}${ungrouped.length ? `<section class="student-success-group evaluation-group-color-${topGroups.length % 8}"><div class="student-success-cell"><span>Sans groupe</span><strong>${studentSuccessLabel(studentSuccessRate(student.id, ungrouped))}</strong></div></section>` : ''}</div>` : ''}
       </section>`;
     }).join('')}
   </div>`;

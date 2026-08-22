@@ -93,3 +93,14 @@
 .competency-row.drop-before::before,.competency-row.drop-after::after{position:absolute;right:4px;left:4px;height:2px;content:"";background:var(--green);border-radius:99px;box-shadow:0 0 0 2px #fff}
 .competency-row.drop-before::before{top:-1px}.competency-row.drop-after::after{bottom:-1px}
 .drag-handle{padding:4px;border-radius:5px;user-select:none}.drag-handle:hover,.drag-handle:focus-visible{color:var(--green);background:var(--green-pale);outline:0}.drag-handle:active{cursor:grabbing}.drag-handle.disabled{opacity:.35;cursor:not-allowed}
+
+/* Student success hierarchy */
+.student-success-subject-cell{justify-content:center;gap:28px;text-align:center}
+.student-success-groups{grid-template-columns:repeat(var(--student-success-columns),minmax(105px,1fr));align-items:stretch;overflow-x:auto}
+.student-success-group{height:100%;border-color:var(--evaluation-group-border,#d9ddd9)}
+.student-success-cell{flex-direction:column;justify-content:center;text-align:center}
+.student-success-group.has-children{color:#414843;background:#fff;border-color:#d9ddd9}
+.student-success-parent-cell{min-height:64px;color:#414843;background:#fff}
+.student-success-children{display:flex;flex:1;flex-direction:column;border-top:1px solid #d9ddd9}
+.student-success-children>.student-success-group{flex:1;border-right:0;border-bottom:1px solid var(--evaluation-group-border,#d9ddd9)}
+.student-success-children>.student-success-group:last-child{border-bottom:0}
