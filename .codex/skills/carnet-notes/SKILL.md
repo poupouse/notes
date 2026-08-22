@@ -26,6 +26,37 @@ Le projet est une application Electron écrite en TypeScript, bundlée par Vite 
 
 Pour une nouvelle fonctionnalité, placer le code dans la couche la plus adaptée. Garder le renderer indépendant de Node/Electron : les accès système passent par `preload.ts` et le contrat IPC. Si le schéma de `AppState` évolue, mettre à jour ensemble les modèles, les validations de `main.ts`, le stockage et les données de repli.
 
+## Architecture de la base de données
+
+La persistance est locale à chaque machine, dans un fichier SQLite situé dans `app.getPath('userData')`. Le stockage n’est pas un ensemble de tables métier classiques : il s’agit d’un journal d’événements append-only.
+
+- La table `events` contient `sequence` (clé primaire auto-incrémentée), `stream_type`, `stream_key`, `event_type`, `payload` JSON, et `occurred_at`.
+- `stream_type` vaut `subject`, `group`, `competency`, `student` ou `assessment`.
+- `stream_key` identifie l’objet métier ; pour une cellule d’évaluation, la clé est le JSON `[studentId, competencyId]`.
+- `event_type` vaut `upsert` pour créer/remplacer une valeur ou `tombstone` pour représenter une suppression. Un tombstone n’a pas de payload.
+- L’index `events_by_stream` accélère la recherche du dernier événement par flux.
+- La vue `current_events` ne conserve logiquement que le dernier événement de chaque couple `(stream_type, stream_key)` ; `current_assessments` filtre les événements du flux d’évaluation.
+- À l’ouverture, `SqliteEventStore` reconstruit un `AppState` à partir de `current_events`. Lors d’une sauvegarde, `replaceSnapshot` compare l’ancien et le nouvel état, écrit uniquement les changements dans une transaction `BEGIN IMMEDIATE`/`COMMIT`, puis met à jour le snapshot mémoire.
+- SQLite est configuré avec le journal WAL et les clés étrangères activées. Ne pas supprimer ou réécrire l’historique pour implémenter une suppression métier.
+
+Une évolution de donnée doit donc préserver la reconstruction depuis les événements existants. Si un nouveau flux est ajouté, mettre à jour le type `StreamType`, les contraintes SQLite, `mapsFor`, `eventsBetween` et `rebuildSnapshot` ensemble.
+
+## Types de données principaux
+
+Les types sont définis dans `src/domain/models.ts` et tous les identifiants métier sont des `string` :
+
+- `Subject` : `id`, `name`. Une matière regroupe les compétences et les groupes.
+- `CompetencyGroup` : `id`, `subjectId`, `name`, et éventuellement `parentGroupId` pour former une hiérarchie de groupes.
+- `Competency` : `id`, `subjectId`, éventuellement `groupId`, `name` et `nationalEducationNumber`.
+- `Student` : `id`, `firstName` et `manualNotes`, une liste de `ManualNote` avec `id`, `text`, `createdAt` et éventuellement `updatedAt`.
+- `StudentCompetencyStatus` : couple `studentId`/`competencyId`, `status` et `updatedAt`. C’est le type actuellement utilisé par la matrice de suivi.
+- `Assessment` : `id`, `subjectId`, `name`, `competencyIds` et éventuellement `scheduledAt`, pour une évaluation nommée portant sur une ou plusieurs compétences.
+- `CompetencyEvaluation` : observation historique reliant `studentId`, `assessmentId` et `competencyId`, avec un `status` et `updatedAt`. Il est distinct du statut courant de la matrice.
+- `CompetencyStatus` : `validated`, `failed`, `in_progress`, `not_taken` ou `absent`. Les libellés affichés en français sont centralisés dans `COMPETENCY_STATUS_LABELS`.
+- `AppState` : agrégat sérialisable contenant `subjects`, `groups`, `competencies`, `students` et `competencyStatuses`.
+
+Les dates sont des chaînes ISO-8601. Lorsqu’un type est ajouté à `AppState`, prendre en compte la validation `isAppState` dans `src/main.ts`, le contrat de stockage, la migration éventuelle des anciennes données et la reconstruction SQLite.
+
 ## Boucle obligatoire après chaque modification
 
 Après chaque modification de fichier, même petite :
