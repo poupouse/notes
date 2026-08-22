@@ -446,7 +446,7 @@ export const startApp = async (): Promise<void> => {
     });
   };
 
-  const competencyColumn = (competencyId: string): ColDef<EvaluationRow> => {
+  const competencyColumn = (competencyId: string, groupColorClass: string): ColDef<EvaluationRow> => {
     const competency = state.competencies.find((item) => item.id === competencyId);
     return {
       field: competencyId,
@@ -456,6 +456,7 @@ export const startApp = async (): Promise<void> => {
         : undefined,
       headerComponent: CompetencyHeaderComponent,
       headerComponentParams: { competencyId },
+      headerClass: `evaluation-competency-header ${groupColorClass}`,
       minWidth: 96,
       width: 108,
       editable: false,
@@ -470,6 +471,26 @@ export const startApp = async (): Promise<void> => {
     };
   };
 
+  const evaluationCompetencyGroups = (): ColGroupDef<EvaluationRow>[] => {
+    const grouped = new Map<string, { name: string; competencies: Competency[] }>();
+    competenciesForSubject(evaluationSubjectId).forEach((competency) => {
+      const group = state.groups.find((item) => item.id === competency.groupId);
+      const groupKey = group?.id ?? 'ungrouped';
+      const existing = grouped.get(groupKey);
+      if (existing) existing.competencies.push(competency);
+      else grouped.set(groupKey, { name: group?.name ?? 'Sans groupe', competencies: [competency] });
+    });
+    return [...grouped.values()].map((group, index) => {
+      const groupColorClass = `evaluation-group-color-${index % 8}`;
+      return {
+        headerName: group.name,
+        headerClass: `evaluation-group-header ${groupColorClass}`,
+        marryChildren: true,
+        children: group.competencies.map((competency) => competencyColumn(competency.id, groupColorClass)),
+      };
+    });
+  };
+
   const evaluationColumns = (): (ColDef<EvaluationRow> | ColGroupDef<EvaluationRow>)[] => [
     {
       field: 'studentName',
@@ -482,8 +503,7 @@ export const startApp = async (): Promise<void> => {
       filter: true,
       editable: false,
     },
-    ...competenciesForSubject(evaluationSubjectId)
-      .map((competency) => competencyColumn(competency.id)),
+    ...evaluationCompetencyGroups(),
     {
       colId: 'subjectAverage',
       headerName: 'Moyenne',
@@ -543,6 +563,7 @@ export const startApp = async (): Promise<void> => {
       defaultColDef: { resizable: true, suppressMovable: true },
       getRowId: (params) => params.data.studentId,
       getRowHeight: (params) => params.node.rowPinned ? 43 : 37,
+      groupHeaderHeight: 31,
       headerHeight: 38,
       quickFilterText: evaluationSearch,
       onCellKeyDown: handleEvaluationKey,

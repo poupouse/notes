@@ -34,6 +34,18 @@
 .evaluation-grid .ag-root-wrapper{border:0;border-radius:0}
 .evaluation-grid .ag-header-group-cell{color:#35584b;font-family:Georgia,serif;font-size:11px;font-weight:600}
 .evaluation-grid .ag-header-group-cell-label{justify-content:center}
+.evaluation-grid .evaluation-group-header,.evaluation-grid .evaluation-competency-header{color:var(--evaluation-group-ink);background:var(--evaluation-group-bg);border-color:var(--evaluation-group-border)}
+.evaluation-grid .evaluation-group-header{border-bottom:1px solid var(--evaluation-group-border);font-size:11px;letter-spacing:.15px}
+.evaluation-grid .evaluation-competency-header .competency-grid-header-menu{color:var(--evaluation-group-ink);background:rgba(255,255,255,.52);border-color:var(--evaluation-group-border)}
+.evaluation-grid .evaluation-competency-header .competency-grid-header-menu:hover,.evaluation-grid .evaluation-competency-header .competency-grid-header-menu:focus{color:var(--evaluation-group-ink);background:rgba(255,255,255,.82);border-color:var(--evaluation-group-ink)}
+.evaluation-group-color-0{--evaluation-group-bg:#e7f2ed;--evaluation-group-ink:#285d49;--evaluation-group-border:#bdd8cb}
+.evaluation-group-color-1{--evaluation-group-bg:#f8edda;--evaluation-group-ink:#80571a;--evaluation-group-border:#ead0a3}
+.evaluation-group-color-2{--evaluation-group-bg:#e9eef8;--evaluation-group-ink:#425f91;--evaluation-group-border:#c8d3e9}
+.evaluation-group-color-3{--evaluation-group-bg:#f5e8ed;--evaluation-group-ink:#8a4b64;--evaluation-group-border:#e5c5d1}
+.evaluation-group-color-4{--evaluation-group-bg:#eee9f7;--evaluation-group-ink:#67518e;--evaluation-group-border:#d5c9e9}
+.evaluation-group-color-5{--evaluation-group-bg:#e5f2f3;--evaluation-group-ink:#346a6e;--evaluation-group-border:#bedcdf}
+.evaluation-group-color-6{--evaluation-group-bg:#f2eddf;--evaluation-group-ink:#74612d;--evaluation-group-border:#ded2ad}
+.evaluation-group-color-7{--evaluation-group-bg:#eaf1e2;--evaluation-group-ink:#526d37;--evaluation-group-border:#cbdcba}
 .evaluation-grid .ag-header-cell-text{overflow:hidden;font:700 8px ui-monospace,SFMono-Regular,Consolas,monospace;line-height:1.1;text-overflow:ellipsis;white-space:nowrap}
 .competency-grid-header{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:3px;overflow:hidden}
 .competency-grid-header-code{min-width:0;overflow:hidden;font:700 8px ui-monospace,SFMono-Regular,Consolas,monospace;text-overflow:ellipsis;white-space:nowrap}
