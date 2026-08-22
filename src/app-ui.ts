@@ -3,11 +3,12 @@ import {
   ModuleRegistry,
   createGrid,
   themeQuartz,
-  type CellValueChangedEvent,
   type ColDef,
   type ColGroupDef,
+  type CellKeyDownEvent,
   type GridApi,
   type GridOptions,
+  type IHeaderParams,
   type ICellRendererParams,
 } from 'ag-grid-community';
 
@@ -48,13 +49,21 @@ const escapeHtml = (value: string): string => value.replace(/[&<>'"]/g, (charact
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
 }[character] ?? character));
 
-const statusOptions = [
-  { value: CompetencyStatus.Validated, label: 'Validée', className: 'validated' },
-  { value: CompetencyStatus.Failed, label: 'Ratée', className: 'failed' },
-  { value: CompetencyStatus.InProgress, label: 'En cours', className: 'in-progress' },
-  { value: CompetencyStatus.NotTaken, label: 'Non passée', className: 'not-taken' },
-  { value: CompetencyStatus.Absent, label: 'Absent', className: 'absent' },
-] as const;
+interface StatusOption {
+  value: CompetencyStatus;
+  label: string;
+  display: string;
+  inputCode: '0' | '1' | '2' | '9' | null;
+  className: string;
+}
+
+const statusOptions: readonly StatusOption[] = [
+  { value: CompetencyStatus.Validated, label: 'Validée', display: 'A', inputCode: '1', className: 'validated' },
+  { value: CompetencyStatus.InProgress, label: 'En cours', display: 'PA', inputCode: '2', className: 'in-progress' },
+  { value: CompetencyStatus.Failed, label: 'Ratée', display: 'NA', inputCode: '9', className: 'failed' },
+  { value: CompetencyStatus.NotTaken, label: 'Non passée', display: 'NE', inputCode: '0', className: 'not-taken' },
+  { value: CompetencyStatus.Absent, label: 'Absent', display: '', inputCode: null, className: 'absent' },
+];
 
 const evaluationTheme = themeQuartz.withParams({
   accentColor: '#41695a',
@@ -238,7 +247,9 @@ export const startApp = async (): Promise<void> => {
     const option = statusOptions.find((item) => item.label === params.value) ?? statusOptions[3];
     const pill = document.createElement('span');
     pill.className = `evaluation-status status-${option.className}`;
-    pill.textContent = option.label;
+    pill.textContent = option.display;
+    pill.title = option.label;
+    pill.setAttribute('aria-label', option.label);
     return pill;
   };
 
@@ -298,30 +309,97 @@ export const startApp = async (): Promise<void> => {
     return row;
   };
 
-  const saveEvaluationStatus = (event: CellValueChangedEvent<EvaluationRow, string>): void => {
-    const competencyId = event.colDef.field;
-    const studentId = event.data?.studentId;
-    const option = statusOptions.find((item) => item.label === event.newValue);
-    if (!competencyId || !studentId || !option) return;
-
+  const storeEvaluationStatus = (
+    studentId: string,
+    competencyId: string,
+    status: CompetencyStatus,
+  ): void => {
     const existing = state.competencyStatuses.find((item) =>
       item.studentId === studentId && item.competencyId === competencyId);
     if (existing) {
-      existing.status = option.value;
+      existing.status = status;
       existing.updatedAt = new Date().toISOString();
-    } else {
-      state.competencyStatuses.push({
-        studentId,
-        competencyId,
-        status: option.value,
-        updatedAt: new Date().toISOString(),
-      });
+      return;
     }
-    saveAppState(state);
+    state.competencyStatuses.push({
+      studentId,
+      competencyId,
+      status,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const setCompetencyStatusForAll = (
+    competencyId: string,
+    status: CompetencyStatus,
+    api: GridApi<EvaluationRow>,
+  ): void => {
+    const option = statusOptions.find((item) => item.value === status);
+    if (!option) return;
+    state.students.forEach((student) => {
+      storeEvaluationStatus(student.id, competencyId, status);
+    });
+    api.forEachNode((node) => {
+      if (node.data) node.data[competencyId] = option.label;
+    });
+    void saveAppState(state).catch((error: unknown) => {
+      console.error('Unable to persist bulk evaluation status', error);
+    });
+    api.setGridOption('pinnedBottomRowData', [evaluationSummaryRow()]);
+    api.refreshCells({ columns: [competencyId, 'subjectAverage'], force: true });
+  };
+
+  const competencyHeader = (competencyId: string) =>
+    (params: IHeaderParams<EvaluationRow>): HTMLElement => {
+      const competency = state.competencies.find((item) => item.id === competencyId);
+      const wrapper = document.createElement('div');
+      wrapper.className = 'competency-grid-header';
+
+      const code = document.createElement('span');
+      code.className = 'competency-grid-header-code';
+      code.textContent = competency?.nationalEducationNumber ?? 'Compétence';
+      code.title = competency?.name ?? '';
+
+      const menu = document.createElement('select');
+      menu.className = 'competency-grid-header-menu';
+      menu.setAttribute('aria-label', `Actions pour ${code.textContent}`);
+      menu.title = 'Appliquer un statut à tous les élèves';
+      menu.innerHTML = '<option value="">⌄</option><option value="absent">Tous absents</option><option value="not_taken">Tous non passés (NE)</option>';
+      menu.addEventListener('click', (event) => event.stopPropagation());
+      menu.addEventListener('change', () => {
+        const action = menu.value;
+        menu.value = '';
+        if (!action) return;
+        const label = action === 'absent' ? 'absents' : 'non passés (NE)';
+        if (!window.confirm(`Marquer tous les élèves ${label} pour ${code.textContent} ?`)) return;
+        setCompetencyStatusForAll(
+          competencyId,
+          action === 'absent' ? CompetencyStatus.Absent : CompetencyStatus.NotTaken,
+          params.api,
+        );
+      });
+
+      wrapper.append(code, menu);
+      return wrapper;
+    };
+
+  const handleEvaluationKey = (event: CellKeyDownEvent<EvaluationRow>): void => {
+    if (event.node.rowPinned || !event.data) return;
+    const keyboardEvent = event.event as KeyboardEvent;
+    if (keyboardEvent.repeat) return;
+    const option = statusOptions.find((item) => item.inputCode === keyboardEvent.key);
+    const competencyId = event.colDef.field;
+    if (!option || !competencyId || !state.competencies.some((item) => item.id === competencyId)) return;
+    keyboardEvent.preventDefault();
+    event.data[competencyId] = option.label;
+    storeEvaluationStatus(event.data.studentId, competencyId, option.value);
+    void saveAppState(state).catch((error: unknown) => {
+      console.error('Unable to persist evaluation status', error);
+    });
     event.api.setGridOption('pinnedBottomRowData', [evaluationSummaryRow()]);
     event.api.refreshCells({
-      rowNodes: event.node ? [event.node] : undefined,
-      columns: ['subjectAverage'],
+      rowNodes: [event.node],
+      columns: [competencyId, 'subjectAverage'],
       force: true,
     });
   };
@@ -334,13 +412,15 @@ export const startApp = async (): Promise<void> => {
       headerTooltip: competency
         ? competency.name
         : undefined,
+      headerComponent: competencyHeader(competencyId),
       minWidth: 96,
       width: 108,
-      editable: (params) => !params.node.rowPinned,
-      cellEditor: 'agSelectCellEditor',
-      cellEditorParams: { values: statusOptions.map((option) => option.label) },
+      editable: false,
       cellRenderer: competencyCellRenderer,
       cellClass: 'evaluation-cell',
+      cellClassRules: {
+        'evaluation-cell-absent': (params) => params.value === 'Absent',
+      },
       sortable: false,
       filter: false,
       wrapHeaderText: false,
@@ -387,13 +467,13 @@ export const startApp = async (): Promise<void> => {
     return `
     <main class="workspace evaluation-workspace">
       <header class="page-header">
-        <div><p class="eyebrow">Suivi des acquis</p><h1>Évaluation</h1><p class="subtitle">Attribuez un statut à chaque compétence, élève par élève.</p></div>
+        <div><p class="eyebrow">Suivi des acquis</p><h1>Évaluation</h1><p class="subtitle">Sélectionnez une case, saisissez 1, 2, 9 ou 0, puis naviguez avec les flèches.</p></div>
         <div class="autosave-indicator"><span></span> Enregistrement automatique</div>
       </header>
       <div class="evaluation-tools">
         <label class="search-field">${icons.search}<input type="search" data-search="evaluations" value="${escapeHtml(evaluationSearch)}" placeholder="Rechercher un élève…"></label>
         <div class="status-legend">
-          ${statusOptions.map((option) => `<span><i class="legend-dot status-${option.className}"></i>${option.label}</span>`).join('')}
+          ${statusOptions.map((option) => `<span><i class="legend-dot status-${option.className}"></i>${option.inputCode ? `<kbd>${option.inputCode}</kbd> = ${option.display} · ${option.label}` : 'Absent · menu colonne'}</span>`).join('')}
         </div>
       </div>
       <div class="evaluation-subject-tabs" role="tablist" aria-label="Choisir une matière">
@@ -403,7 +483,7 @@ export const startApp = async (): Promise<void> => {
         }).join('')}
       </div>
       <section class="evaluation-grid-card">
-        <div class="grid-help"><strong>${escapeHtml(selectedSubject?.name ?? 'Matière')}</strong><span>${state.students.length} élèves</span><span>${selectedCompetencyCount} compétence${selectedCompetencyCount > 1 ? 's' : ''}</span><span>Cliquer sur une case pour changer son statut</span></div>
+        <div class="grid-help"><strong>${escapeHtml(selectedSubject?.name ?? 'Matière')}</strong><span>${state.students.length} élèves</span><span>${selectedCompetencyCount} compétence${selectedCompetencyCount > 1 ? 's' : ''}</span><span>Flèches : déplacer · 1/2/9/0 : noter</span></div>
         <div id="evaluation-grid" class="evaluation-grid"></div>
       </section>
     </main>`;
@@ -421,10 +501,8 @@ export const startApp = async (): Promise<void> => {
       getRowId: (params) => params.data.studentId,
       getRowHeight: (params) => params.node.rowPinned ? 43 : 37,
       headerHeight: 38,
-      singleClickEdit: true,
-      stopEditingWhenCellsLoseFocus: true,
       quickFilterText: evaluationSearch,
-      onCellValueChanged: saveEvaluationStatus,
+      onCellKeyDown: handleEvaluationKey,
       ensureDomOrder: true,
       tooltipShowDelay: 250,
     };

@@ -17,6 +17,7 @@
 .evaluation-tools{max-width:1600px;display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 auto 10px}.evaluation-tools .search-field{height:34px}
 .status-legend{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px 10px;color:#777d76;font-size:8px}
 .status-legend>span{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.status-legend kbd{min-width:17px;padding:2px 4px;color:#465049;background:#fff;border:1px solid #d8dcd7;border-bottom-width:2px;border-radius:4px;font:700 8px ui-monospace,SFMono-Regular,Consolas,monospace;text-align:center}
 .legend-dot{width:6px;height:6px;display:inline-block;border-radius:50%}
 .legend-dot.status-validated{background:#55916d}.legend-dot.status-failed{background:#c8695f}.legend-dot.status-in-progress{background:#d7a23d}.legend-dot.status-not-taken{background:#a5aaa4}.legend-dot.status-absent{background:#758397}
 .evaluation-subject-tabs{max-width:1600px;display:flex;align-items:flex-end;gap:3px;margin:0 auto -1px;padding:0 8px;overflow-x:auto;scrollbar-width:thin}
@@ -34,6 +35,10 @@
 .evaluation-grid .ag-header-group-cell{color:#35584b;font-family:Georgia,serif;font-size:11px;font-weight:600}
 .evaluation-grid .ag-header-group-cell-label{justify-content:center}
 .evaluation-grid .ag-header-cell-text{overflow:hidden;font:700 8px ui-monospace,SFMono-Regular,Consolas,monospace;line-height:1.1;text-overflow:ellipsis;white-space:nowrap}
+.competency-grid-header{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:3px;overflow:hidden}
+.competency-grid-header-code{min-width:0;overflow:hidden;font:700 8px ui-monospace,SFMono-Regular,Consolas,monospace;text-overflow:ellipsis;white-space:nowrap}
+.competency-grid-header-menu{width:22px;height:22px;flex:0 0 auto;padding:0 2px;color:#5f6c64;background:#e7ede9;border:1px solid #d1dbd5;border-radius:5px;font-size:10px;cursor:pointer}
+.competency-grid-header-menu:hover,.competency-grid-header-menu:focus{color:#294c3f;background:#dce8e1;border-color:#a9beb3;outline:0}
 .evaluation-grid .ag-pinned-left-header .ag-header-cell-text{font-family:Inter,ui-sans-serif,"Segoe UI",sans-serif;font-size:9px}
 .evaluation-grid .ag-pinned-left-header,.evaluation-grid .ag-pinned-left-cols-container{box-shadow:5px 0 14px rgba(40,49,43,.06)}
 .evaluation-grid .ag-pinned-right-header .ag-header-cell-text{font-family:Inter,ui-sans-serif,"Segoe UI",sans-serif;font-size:9px}
@@ -41,13 +46,15 @@
 .evaluation-grid .ag-cell{display:flex;align-items:center}
 .evaluation-grid .evaluation-cell{justify-content:center;cursor:pointer}
 .evaluation-grid .evaluation-cell:hover{background:#f5f8f6}
+.evaluation-grid .evaluation-cell.ag-cell-focus{box-shadow:inset 0 0 0 2px #41695a}
+.evaluation-grid .evaluation-cell-absent,.evaluation-grid .evaluation-cell-absent:hover{background:#dce9f7}
 .evaluation-grid .student-grid-cell{color:#303a34;font-family:Georgia,serif;font-size:11px;font-weight:600;background:#fcfcfa}
-.evaluation-status{min-width:68px;display:inline-flex;align-items:center;justify-content:center;padding:3px 6px;border:1px solid transparent;border-radius:99px;font-size:8px;font-weight:750;letter-spacing:0;white-space:nowrap}
-.evaluation-status.status-validated{color:#37694d;background:#e3f0e8;border-color:#c9e2d3}
-.evaluation-status.status-failed{color:#9a473f;background:#f8e7e5;border-color:#efd0cc}
-.evaluation-status.status-in-progress{color:#88651f;background:#fbf1d9;border-color:#efdfb8}
-.evaluation-status.status-not-taken{color:#767b75;background:#eeefec;border-color:#e0e2dd}
-.evaluation-status.status-absent{color:#566577;background:#e8edf3;border-color:#d4dde7}
+.evaluation-status{min-width:46px;display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border:1px solid transparent;border-radius:7px;font-size:10px;font-weight:800;letter-spacing:.25px;white-space:nowrap}
+.evaluation-status.status-validated{color:#245e3c;background:#dcefe3;border-color:#b8dcc5}
+.evaluation-status.status-failed{color:#963f38;background:#f7dfdc;border-color:#e9bbb6}
+.evaluation-status.status-in-progress{color:#805d14;background:#faedc9;border-color:#e8d18f}
+.evaluation-status.status-not-taken{color:#6e746e;background:#fff;border-color:#dfe2de}
+.evaluation-status.status-absent{min-width:0;padding:0;background:transparent;border:0}
 .evaluation-grid .average-cell{justify-content:center;background:#fbfcfa}
 .evaluation-grid .ag-row-pinned{color:#2f5144;background:#f0f5f2;border-top:2px solid #b9cec3;font-weight:700}
 .evaluation-grid .ag-row-pinned .ag-cell{background:#f0f5f2}
