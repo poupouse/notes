@@ -46,9 +46,9 @@
 .evaluation-group-color-5{--evaluation-group-bg:#e5f2f3;--evaluation-group-ink:#346a6e;--evaluation-group-border:#bedcdf}
 .evaluation-group-color-6{--evaluation-group-bg:#f2eddf;--evaluation-group-ink:#74612d;--evaluation-group-border:#ded2ad}
 .evaluation-group-color-7{--evaluation-group-bg:#eaf1e2;--evaluation-group-ink:#526d37;--evaluation-group-border:#cbdcba}
-.evaluation-grid .ag-header-cell-text{overflow:hidden;font:700 8px ui-monospace,SFMono-Regular,Consolas,monospace;line-height:1.1;text-overflow:ellipsis;white-space:nowrap}
-.competency-grid-header{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:3px;overflow:hidden}
-.competency-grid-header-code{min-width:0;overflow:hidden;font:700 8px ui-monospace,SFMono-Regular,Consolas,monospace;text-overflow:ellipsis;white-space:nowrap}
+.evaluation-grid .ag-header-cell-text{overflow:hidden;font:700 12px Arial,sans-serif;line-height:1.1;text-overflow:ellipsis;white-space:nowrap}
+.competency-grid-header{width:100%;height:100%;display:flex;align-items:center;justify-content:flex-end;flex-direction:column;gap:5px;padding:5px 0 4px;overflow:hidden}
+.competency-grid-header-code{min-height:0;display:flex;align-items:center;flex:1;overflow:visible;font:700 12px Arial,sans-serif;line-height:1;letter-spacing:.15px;white-space:nowrap;writing-mode:vertical-rl;transform:rotate(180deg)}
 .competency-grid-header-menu{width:22px;height:22px;flex:0 0 auto;padding:0;color:#5f6c64;background:#e7ede9;border:1px solid #d1dbd5;border-radius:5px;font-size:13px;line-height:1;cursor:pointer}
 .competency-grid-header-menu:hover,.competency-grid-header-menu:focus{color:#294c3f;background:#dce8e1;border-color:#a9beb3;outline:0}
 .competency-grid-header-popover{width:180px;margin:0;padding:4px;position:fixed;color:#3f4942;background:#fff;border:1px solid #ccd6d0;border-radius:7px;box-shadow:0 8px 24px rgba(35,48,40,.18)}
@@ -56,7 +56,7 @@
 .competency-grid-header-popover::backdrop{background:transparent}
 .competency-grid-header-popover button{width:100%;display:block;box-sizing:border-box;flex:0 0 auto;padding:7px 9px;color:inherit;background:transparent;border:0;border-radius:5px;font:600 10px Inter,ui-sans-serif,"Segoe UI",sans-serif;text-align:left;white-space:nowrap;cursor:pointer}
 .competency-grid-header-popover button:hover,.competency-grid-header-popover button:focus{color:#294c3f;background:#edf3ef;outline:0}
-.evaluation-grid .ag-pinned-left-header .ag-header-cell-text{font-family:Inter,ui-sans-serif,"Segoe UI",sans-serif;font-size:9px}
+.evaluation-grid .ag-pinned-left-header .ag-header-cell-text{font-family:Arial,sans-serif;font-size:11px}
 .evaluation-grid .ag-pinned-left-header,.evaluation-grid .ag-pinned-left-cols-container{box-shadow:5px 0 14px rgba(40,49,43,.06)}
 .evaluation-grid .ag-pinned-right-header .ag-header-cell-text{font-family:Inter,ui-sans-serif,"Segoe UI",sans-serif;font-size:9px}
 .evaluation-grid .ag-pinned-right-header,.evaluation-grid .ag-pinned-right-cols-container{box-shadow:-5px 0 14px rgba(40,49,43,.07)}
@@ -65,7 +65,7 @@
 .evaluation-grid .evaluation-cell:hover{background:#f5f8f6}
 .evaluation-grid .evaluation-cell.ag-cell-focus{box-shadow:inset 0 0 0 2px #41695a}
 .evaluation-grid .evaluation-cell-absent,.evaluation-grid .evaluation-cell-absent:hover{background:#dce9f7}
-.evaluation-grid .student-grid-cell{color:#303a34;font-family:Georgia,serif;font-size:11px;font-weight:600;background:#fcfcfa}
+.evaluation-grid .student-grid-cell{padding-left:10px;padding-right:10px;color:#303a34;font-family:Arial,sans-serif;font-size:12px;font-weight:600;background:#fcfcfa;white-space:nowrap}
 .evaluation-status{min-width:46px;display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border:1px solid transparent;border-radius:7px;font-size:10px;font-weight:800;letter-spacing:.25px;white-space:nowrap}
 .evaluation-status.status-validated{color:#245e3c;background:#dcefe3;border-color:#b8dcc5}
 .evaluation-status.status-failed{color:#963f38;background:#f7dfdc;border-color:#e9bbb6}

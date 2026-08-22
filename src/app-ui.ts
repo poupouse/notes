@@ -457,8 +457,9 @@ export const startApp = async (): Promise<void> => {
       headerComponent: CompetencyHeaderComponent,
       headerComponentParams: { competencyId },
       headerClass: `evaluation-competency-header ${groupColorClass}`,
-      minWidth: 96,
-      width: 108,
+      minWidth: 50,
+      width: 54,
+      maxWidth: 62,
       editable: false,
       cellRenderer: competencyCellRenderer,
       cellClass: 'evaluation-cell',
@@ -469,6 +470,15 @@ export const startApp = async (): Promise<void> => {
       filter: false,
       wrapHeaderText: false,
     };
+  };
+
+  const studentNameColumnWidth = (): number => {
+    const labels = ['Élève', 'Moyenne', ...state.students.map((student) => student.firstName)];
+    const context = document.createElement('canvas').getContext('2d');
+    if (context) context.font = '600 12px Arial';
+    const widestLabel = Math.max(...labels.map((label) =>
+      context?.measureText(label).width ?? label.length * 7));
+    return Math.max(76, Math.ceil(widestLabel + 22));
   };
 
   const evaluationCompetencyGroups = (): ColGroupDef<EvaluationRow>[] => {
@@ -491,14 +501,16 @@ export const startApp = async (): Promise<void> => {
     });
   };
 
-  const evaluationColumns = (): (ColDef<EvaluationRow> | ColGroupDef<EvaluationRow>)[] => [
-    {
+  const evaluationColumns = (): (ColDef<EvaluationRow> | ColGroupDef<EvaluationRow>)[] => {
+    const studentWidth = studentNameColumnWidth();
+    return [{
       field: 'studentName',
       headerName: 'Élève',
       pinned: 'left',
       lockPinned: true,
-      minWidth: 145,
-      width: 165,
+      minWidth: studentWidth,
+      width: studentWidth,
+      maxWidth: studentWidth + 24,
       cellClass: 'student-grid-cell',
       filter: true,
       editable: false,
@@ -522,7 +534,8 @@ export const startApp = async (): Promise<void> => {
       cellRenderer: averageRenderer,
       cellClass: 'average-cell',
     },
-  ];
+    ];
+  };
 
   const evaluationsPage = (): string => {
     const selectedSubject = state.subjects.find((subject) => subject.id === evaluationSubjectId);
@@ -564,7 +577,7 @@ export const startApp = async (): Promise<void> => {
       getRowId: (params) => params.data.studentId,
       getRowHeight: (params) => params.node.rowPinned ? 43 : 37,
       groupHeaderHeight: 31,
-      headerHeight: 38,
+      headerHeight: 104,
       quickFilterText: evaluationSearch,
       onCellKeyDown: handleEvaluationKey,
       ensureDomOrder: true,
