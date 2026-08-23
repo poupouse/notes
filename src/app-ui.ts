@@ -18,6 +18,11 @@ import { CompetencyStatus } from './domain';
 import type { Competency, CompetencyGroup, Dictation, DictationLevel, Student } from './domain';
 import type { AppPage, LegacyAppController, LegacyAppOptions } from './ui/app-navigation';
 import type { DictationsPageSnapshot } from './ui/dictations-page';
+import type {
+  StudentDetailSnapshot,
+  StudentSuccessGroupSnapshot,
+  StudentsPageSnapshot,
+} from './ui/students-page';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -33,15 +38,12 @@ const svg = (paths: string): string =>
 
 const icons = {
   layers: svg('<path d="m12 3-9 5 9 5 9-5-9-5Z"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5"/>'),
-  users: svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>'),
   search: svg('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   book: svg('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/>'),
   chevron: svg('<path d="m9 18 6-6-6-6"/>'),
   edit: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/>'),
   trash: svg('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/>'),
-  note: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m17 3 4 4L11 17l-4 1 1-4Z"/>'),
-  grid: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11M15 9v11"/>'),
 };
 
 const escapeHtml = (value: string): string => value.replace(/[&<>'"]/g, (character) => ({
@@ -229,9 +231,6 @@ export const startApp = async (
     return passed.filter((status) => status === CompetencyStatus.Validated).length / passed.length;
   };
 
-  const studentSuccessLabel = (value: number | null): string =>
-    value === null ? '—' : `${Math.round(value * 100)} %`;
-
   const groupTreeCompetencies = (groupId: string): Competency[] => {
     const groupIds = new Set<string>();
     const addGroup = (id: string): void => {
@@ -260,119 +259,82 @@ export const startApp = async (
     return Math.max(0, descendantIndex) % 8;
   };
 
-  const studentSuccessGroup = (studentId: string, group: CompetencyGroup): string => {
+  const studentSuccessGroupSnapshot = (
+    studentId: string,
+    group: CompetencyGroup,
+  ): StudentSuccessGroupSnapshot => {
     const children = state.groups.filter((item) => item.parentGroupId === group.id);
-    const rate = studentSuccessRate(studentId, groupTreeCompetencies(group.id));
-    const colorClass = `evaluation-group-color-${evaluationGroupColorIndex(group.subjectId, group.id)}`;
-    return `<section class="student-success-group ${children.length ? 'has-children' : colorClass}">
-      <div class="student-success-cell ${children.length ? 'student-success-parent-cell' : ''}"><span>${escapeHtml(group.name)}</span><strong>${studentSuccessLabel(rate)}</strong></div>
-      ${children.length ? `<div class="student-success-children">${children.map((child) => studentSuccessGroup(studentId, child)).join('')}</div>` : ''}
-    </section>`;
+    return {
+      id: group.id,
+      name: group.name,
+      rate: studentSuccessRate(studentId, groupTreeCompetencies(group.id)),
+      colorIndex: evaluationGroupColorIndex(group.subjectId, group.id),
+      children: children.map((child) => studentSuccessGroupSnapshot(studentId, child)),
+    };
   };
 
-  const studentSuccessOverview = (student: Student): string => `<div class="student-success-overview">
-    ${state.subjects.map((subject) => {
-      const subjectCompetencies = state.competencies.filter((competency) => competency.subjectId === subject.id);
-      const topGroups = state.groups.filter((group) => group.subjectId === subject.id && !group.parentGroupId);
-      const ungrouped = subjectCompetencies.filter((competency) => !competency.groupId);
-      const subjectRate = studentSuccessRate(student.id, subjectCompetencies);
-      const columnCount = topGroups.length + (ungrouped.length ? 1 : 0);
-      return `<section class="student-success-subject">
-        <div class="student-success-subject-cell"><span>${escapeHtml(subject.name)}</span><strong>${studentSuccessLabel(subjectRate)}</strong></div>
-        ${columnCount ? `<div class="student-success-groups" style="--student-success-columns:${columnCount}">${topGroups.map((group) => studentSuccessGroup(student.id, group)).join('')}${ungrouped.length ? `<section class="student-success-group evaluation-group-color-${topGroups.length % 8}"><div class="student-success-cell"><span>Sans groupe</span><strong>${studentSuccessLabel(studentSuccessRate(student.id, ungrouped))}</strong></div></section>` : ''}</div>` : ''}
-      </section>`;
-    }).join('')}
-  </div>`;
-
-  const studentDictationChart = (student: Student): string => {
-    const dictations = state.dictations.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    const points = dictations.map((dictation, index) => ({
-      dictation,
-      index,
-      rate: dictationRate(student.id, dictation),
-      level: studentDictationLevel(student.id, dictation),
-    }));
-    const numericPoints = points.filter((point): point is typeof point & { rate: number } =>
-      typeof point.rate === 'number');
-    if (!dictations.length || !numericPoints.length) {
-      return `<div class="dictation-chart-empty">${icons.grid}<strong>Aucun résultat de dictée</strong><span>La courbe apparaîtra dès qu’un premier résultat sera saisi.</span></div>`;
-    }
-
-    const left = 42;
-    const right = 22;
-    const top = 18;
-    const plotHeight = 210;
-    const bottom = 52;
-    const width = Math.max(560, left + right + Math.max(1, dictations.length - 1) * 78);
-    const height = top + plotHeight + bottom;
-    const xFor = (index: number): number => dictations.length === 1
-      ? left + (width - left - right) / 2
-      : left + index * ((width - left - right) / (dictations.length - 1));
-    const yFor = (rate: number): number => top + ((100 - rate) / 100) * plotHeight;
-
-    const segments: Array<Array<typeof numericPoints[number]>> = [];
-    numericPoints.forEach((point) => {
-      const current = segments[segments.length - 1];
-      if (!current || current[current.length - 1].index !== point.index - 1) segments.push([point]);
-      else current.push(point);
-    });
-
-    let trendLine = '';
-    if (numericPoints.length >= 2) {
-      const count = numericPoints.length;
-      const sumX = numericPoints.reduce((sum, point) => sum + point.index, 0);
-      const sumY = numericPoints.reduce((sum, point) => sum + point.rate, 0);
-      const sumXY = numericPoints.reduce((sum, point) => sum + point.index * point.rate, 0);
-      const sumXX = numericPoints.reduce((sum, point) => sum + point.index * point.index, 0);
-      const denominator = count * sumXX - sumX * sumX;
-      if (denominator !== 0) {
-        const slope = (count * sumXY - sumX * sumY) / denominator;
-        const intercept = (sumY - slope * sumX) / count;
-        const firstRate = Math.max(0, Math.min(100, intercept));
-        const lastIndex = dictations.length - 1;
-        const lastRate = Math.max(0, Math.min(100, intercept + slope * lastIndex));
-        trendLine = `<line class="dictation-chart-trend" x1="${xFor(0)}" y1="${yFor(firstRate)}" x2="${xFor(lastIndex)}" y2="${yFor(lastRate)}"/>`;
-      }
-    }
-
-    const grid = [0, 20, 40, 60, 80, 100].map((tick) => `<g><line class="dictation-chart-grid" x1="${left}" y1="${yFor(tick)}" x2="${width - right}" y2="${yFor(tick)}"/><text class="dictation-chart-y-label" x="${left - 8}" y="${yFor(tick) + 3}">${tick} %</text></g>`).join('');
-    const paths = segments.filter((segment) => segment.length > 1).map((segment) =>
-      `<polyline class="dictation-chart-line" points="${segment.map((point) => `${xFor(point.index)},${yFor(point.rate)}`).join(' ')}"/>`).join('');
-    const markers = points.map((point) => {
-      const x = xFor(point.index);
-      const label = escapeHtml(point.dictation.name.length > 14 ? `${point.dictation.name.slice(0, 12)}…` : point.dictation.name);
-      const marker = typeof point.rate === 'number'
-        ? `<circle class="dictation-chart-point" cx="${x}" cy="${yFor(point.rate)}" r="4.5"><title>${escapeHtml(point.dictation.name)} · ${point.rate.toFixed(2)} % · Niveau ${point.level}</title></circle>`
-        : '';
-      return `${marker}<text class="dictation-chart-x-label" x="${x}" y="${top + plotHeight + 22}" transform="rotate(-30 ${x} ${top + plotHeight + 22})">${label}</text>`;
-    }).join('');
-
-    return `<div class="dictation-chart-card"><div class="dictation-chart-legend"><span><i class="result-line"></i>Résultats</span>${trendLine ? '<span><i class="trend-line"></i>Tendance</span>' : ''}</div><div class="dictation-chart-scroll"><svg class="dictation-chart" viewBox="0 0 ${width} ${height}" style="min-width:${width}px" role="img" aria-label="Progression de ${escapeHtml(student.firstName)} en dictée, de 0 à 100 pour cent">${grid}${trendLine}${paths}${markers}</svg></div></div>`;
-  };
-
-  const studentDetail = (student?: Student): string => {
-    if (!student) return `<aside class="student-detail empty-detail">${icons.users}<p>Sélectionnez un élève</p></aside>`;
+  const studentDetailSnapshot = (student: Student): StudentDetailSnapshot => {
     const notes = [...student.manualNotes].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    return `<aside class="student-detail">
-      <div class="detail-topbar"><span>Fiche élève</span><div><button class="icon-button" data-action="edit-student" data-id="${student.id}">${icons.edit}</button><button class="icon-button danger" data-action="delete-student" data-id="${student.id}">${icons.trash}</button></div></div>
-      <div class="student-identity"><div class="avatar large avatar-${avatarColor(student.firstName)}">${escapeHtml(initials(student.firstName))}</div><div><h2>${escapeHtml(student.firstName)}</h2><p>${notes.length} note${notes.length > 1 ? 's' : ''} personnelle${notes.length > 1 ? 's' : ''}</p></div></div>
-      <div class="detail-section-heading"><div><h3>Réussite par domaine</h3><p>Matières, groupes et sous-groupes</p></div></div>
-      ${studentSuccessOverview(student)}
-      <div class="detail-section-heading"><div><h3>Progression en dictée</h3><p>Résultats sur l’année · échelle de 0 à 100 %</p></div></div>
-      ${studentDictationChart(student)}
-      <div class="detail-section-heading"><div><h3>Notes de suivi</h3><p>Observations privées et rappels</p></div><button class="secondary-button compact" data-action="new-note" data-id="${student.id}">${icons.plus} Ajouter</button></div>
-      <div class="notes-list">${notes.map((note) => `<article class="note-card"><div class="note-meta"><span>${formatDate(note.createdAt)}</span><button class="icon-button subtle danger" data-action="delete-note" data-id="${note.id}" data-student-id="${student.id}">${icons.trash}</button></div><p>${escapeHtml(note.text)}</p></article>`).join('')}${notes.length ? '' : `<div class="notes-empty">${icons.note}<p>Aucune note pour le moment.</p><button class="text-button" data-action="new-note" data-id="${student.id}">Écrire une première note</button></div>`}</div>
-    </aside>`;
+    const dictations = state.dictations.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return {
+      id: student.id,
+      firstName: student.firstName,
+      initials: initials(student.firstName),
+      avatarColor: avatarColor(student.firstName),
+      subjects: state.subjects.map((subject) => {
+        const subjectCompetencies = state.competencies.filter((competency) => competency.subjectId === subject.id);
+        const topGroups = state.groups.filter((group) => group.subjectId === subject.id && !group.parentGroupId);
+        const ungrouped = subjectCompetencies.filter((competency) => !competency.groupId);
+        const groups = topGroups.map((group) => studentSuccessGroupSnapshot(student.id, group));
+        if (ungrouped.length) groups.push({
+          id: `${subject.id}-ungrouped`,
+          name: 'Sans groupe',
+          rate: studentSuccessRate(student.id, ungrouped),
+          colorIndex: topGroups.length % 8,
+          children: [],
+        });
+        return {
+          id: subject.id,
+          name: subject.name,
+          rate: studentSuccessRate(student.id, subjectCompetencies),
+          groups,
+        };
+      }),
+      dictations: dictations.map((dictation) => {
+        const rate = dictationRate(student.id, dictation);
+        return {
+          id: dictation.id,
+          name: dictation.name,
+          rate: typeof rate === 'number' ? rate : null,
+          level: studentDictationLevel(student.id, dictation),
+        };
+      }),
+      notes: notes.map((note) => ({
+        id: note.id,
+        text: note.text,
+        formattedDate: formatDate(note.createdAt),
+      })),
+    };
   };
 
-  const studentsPage = (): string => {
+  const studentsSnapshot = (): StudentsPageSnapshot => {
     const query = studentSearch.trim().toLocaleLowerCase('fr');
     const students = [...state.students].filter((student) => student.firstName.toLocaleLowerCase('fr').includes(query)).sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'));
-    return `<main class="workspace students-workspace">
-      <header class="page-header"><div><p class="eyebrow">Votre classe</p><h1>Élèves</h1><p class="subtitle">Gardez les informations essentielles et vos observations à portée de main.</p></div><button class="primary-button" data-action="new-student">${icons.plus} Nouvel élève</button></header>
-      <div class="page-tools"><label class="search-field">${icons.search}<input type="search" data-search="students" value="${escapeHtml(studentSearch)}" placeholder="Rechercher un élève…"></label><div class="summary-chip">${icons.users} ${state.students.length} élèves</div></div>
-      <div class="students-layout"><section class="student-list-panel"><div class="list-caption"><span>Prénom</span><span>Notes</span></div><div class="student-list">${students.map((student) => `<button class="student-row ${student.id === selectedStudentId ? 'selected' : ''}" data-action="select-student" data-id="${student.id}"><span class="avatar avatar-${avatarColor(student.firstName)}">${escapeHtml(initials(student.firstName))}</span><span class="student-row-name"><strong>${escapeHtml(student.firstName)}</strong><small>${student.manualNotes[0] ? escapeHtml(student.manualNotes[0].text) : 'Aucune observation'}</small></span><span class="note-count ${student.manualNotes.length ? 'has-notes' : ''}">${student.manualNotes.length}</span>${icons.chevron}</button>`).join('')}${students.length ? '' : `<div class="empty-state list-empty">${icons.search}<h3>Aucun résultat</h3><p>Essayez avec un autre prénom.</p></div>`}</div></section>${studentDetail(state.students.find((student) => student.id === selectedStudentId))}</div>
-    </main>`;
+    const selected = state.students.find((student) => student.id === selectedStudentId);
+    return {
+      search: studentSearch,
+      totalStudentCount: state.students.length,
+      students: students.map((student) => ({
+        id: student.id,
+        firstName: student.firstName,
+        initials: initials(student.firstName),
+        avatarColor: avatarColor(student.firstName),
+        noteCount: student.manualNotes.length,
+        notePreview: student.manualNotes[0]?.text ?? 'Aucune observation',
+        selected: student.id === selectedStudentId,
+      })),
+      selected: selected ? studentDetailSnapshot(selected) : undefined,
+    };
   };
 
   const evaluationStatusLabel = (studentId: string, competencyId: string): string => {
@@ -806,10 +768,11 @@ export const startApp = async (
     evaluationGridApi?.destroy();
     evaluationGridApi = undefined;
     options.onDictationsChange(page === 'dictations' ? dictationsSnapshot() : undefined);
+    options.onStudentsChange(page === 'students' ? studentsSnapshot() : undefined);
     const pageContent = page === 'competencies'
       ? competenciesPage()
       : page === 'students'
-        ? studentsPage()
+        ? ''
         : page === 'evaluations'
           ? evaluationsPage()
           : '';
@@ -1053,12 +1016,6 @@ export const startApp = async (
     else if (action === 'edit-competency' && id) competencyModal(id);
     else if (action === 'delete-competency' && id) confirmDeletion('Supprimer cette compétence ?', 'Les évaluations associées à cette compétence seront également supprimées.', () => { state.competencies = state.competencies.filter((item) => item.id !== id); state.competencyStatuses = state.competencyStatuses.filter((item) => item.competencyId !== id); persist(); });
     else if (action === 'delete-group' && id) confirmDeletion('Supprimer ce groupe ?', 'Ses sous-groupes seront supprimés. Les compétences seront conservées sans groupe.', () => { const ids = descendants(id); state.groups = state.groups.filter((group) => !ids.includes(group.id)); state.competencies.forEach((item) => { if (item.groupId && ids.includes(item.groupId)) item.groupId = undefined; }); normalizeGroupOrder(); persist(); });
-    else if (action === 'new-student') studentModal();
-    else if (action === 'edit-student' && id) studentModal(id);
-    else if (action === 'select-student' && id) { selectedStudentId = id; render(); }
-    else if (action === 'new-note' && id) noteModal(id);
-    else if (action === 'delete-note' && id && button.dataset.studentId) { const studentId = button.dataset.studentId; confirmDeletion('Supprimer cette note ?', 'Cette note de suivi ne sera plus visible.', () => { const student = state.students.find((item) => item.id === studentId); if (student) student.manualNotes = student.manualNotes.filter((note) => note.id !== id); persist(); }); }
-    else if (action === 'delete-student' && id) confirmDeletion('Supprimer cet élève ?', 'Ses notes et ses résultats seront également supprimés.', () => { state.students = state.students.filter((student) => student.id !== id); state.competencyStatuses = state.competencyStatuses.filter((item) => item.studentId !== id); state.dictationResults = state.dictationResults.filter((item) => item.studentId !== id); selectedStudentId = state.students[0]?.id ?? ''; persist(); });
   }, { signal: eventController.signal });
 
   root.addEventListener('input', (event) => {
@@ -1068,7 +1025,8 @@ export const startApp = async (
       evaluationGridApi?.setGridOption('quickFilterText', evaluationSearch);
       return;
     }
-    if (input.dataset.search === 'competencies') competencySearch = input.value; else studentSearch = input.value;
+    if (input.dataset.search !== 'competencies') return;
+    competencySearch = input.value;
     const position = input.selectionStart ?? input.value.length; render(); const next = root.querySelector<HTMLInputElement>(`[data-search="${input.dataset.search}"]`); next?.focus(); next?.setSelectionRange(position, position);
   }, { signal: eventController.signal });
 
@@ -1138,6 +1096,35 @@ export const startApp = async (
         });
       },
       editResult: dictationResultModal,
+    },
+    students: {
+      setSearch(value) {
+        studentSearch = value;
+        render();
+      },
+      select(studentId) {
+        selectedStudentId = studentId;
+        render();
+      },
+      create: studentModal,
+      edit: studentModal,
+      remove(studentId) {
+        confirmDeletion('Supprimer cet élève ?', 'Ses notes et ses résultats seront également supprimés.', () => {
+          state.students = state.students.filter((student) => student.id !== studentId);
+          state.competencyStatuses = state.competencyStatuses.filter((item) => item.studentId !== studentId);
+          state.dictationResults = state.dictationResults.filter((item) => item.studentId !== studentId);
+          selectedStudentId = state.students[0]?.id ?? '';
+          persist();
+        });
+      },
+      addNote: noteModal,
+      removeNote(studentId, noteId) {
+        confirmDeletion('Supprimer cette note ?', 'Cette note de suivi ne sera plus visible.', () => {
+          const student = state.students.find((item) => item.id === studentId);
+          if (student) student.manualNotes = student.manualNotes.filter((note) => note.id !== noteId);
+          persist();
+        });
+      },
     },
     navigate(nextPage) {
       if (page === nextPage) return;

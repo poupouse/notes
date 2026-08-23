@@ -5,9 +5,11 @@ import { startApp } from './app-ui';
 import AppModalHost from './components/AppModalHost.vue';
 import AppSidebar from './components/AppSidebar.vue';
 import DictationsPage from './components/DictationsPage.vue';
+import StudentsPage from './components/StudentsPage.vue';
 import type { AppPage, AppShellSnapshot, LegacyAppController } from './ui/app-navigation';
 import type { DictationsPageSnapshot } from './ui/dictations-page';
 import type { LegacyModalBridge, LegacyModalRequest } from './ui/legacy-modal';
+import type { StudentsPageSnapshot } from './ui/students-page';
 
 const legacyRoot = ref<HTMLElement | null>(null);
 const shell = reactive<AppShellSnapshot>({
@@ -21,6 +23,7 @@ const shell = reactive<AppShellSnapshot>({
 });
 const modalRequest = shallowRef<LegacyModalRequest>();
 const dictationsSnapshot = shallowRef<DictationsPageSnapshot>();
+const studentsSnapshot = shallowRef<StudentsPageSnapshot>();
 const modalError = ref('');
 let controller: LegacyAppController | undefined;
 let disposed = false;
@@ -54,6 +57,14 @@ const editDictation = (id: string): void => controller?.dictations.edit(id);
 const removeDictation = (id: string): void => controller?.dictations.remove(id);
 const editDictationResult = (studentId: string, dictationId: string): void =>
   controller?.dictations.editResult(studentId, dictationId);
+const searchStudents = (value: string): void => controller?.students.setSearch(value);
+const selectStudent = (id: string): void => controller?.students.select(id);
+const createStudent = (): void => controller?.students.create();
+const editStudent = (id: string): void => controller?.students.edit(id);
+const removeStudent = (id: string): void => controller?.students.remove(id);
+const addStudentNote = (id: string): void => controller?.students.addNote(id);
+const removeStudentNote = (studentId: string, noteId: string): void =>
+  controller?.students.removeNote(studentId, noteId);
 
 onMounted(async () => {
   if (!legacyRoot.value) throw new Error('Legacy application root not found');
@@ -65,6 +76,9 @@ onMounted(async () => {
     },
     onDictationsChange(snapshot) {
       dictationsSnapshot.value = snapshot;
+    },
+    onStudentsChange(snapshot) {
+      studentsSnapshot.value = snapshot;
     },
   });
   if (disposed) mountedController.destroy(); else controller = mountedController;
@@ -94,8 +108,19 @@ onBeforeUnmount(() => {
       @remove="removeDictation"
       @edit-result="editDictationResult"
     />
+    <StudentsPage
+      v-if="shell.page === 'students' && studentsSnapshot"
+      :snapshot="studentsSnapshot"
+      @search="searchStudents"
+      @select="selectStudent"
+      @create="createStudent"
+      @edit="editStudent"
+      @remove="removeStudent"
+      @add-note="addStudentNote"
+      @remove-note="removeStudentNote"
+    />
     <div
-      v-show="shell.page !== 'dictations'"
+      v-show="shell.page !== 'dictations' && shell.page !== 'students'"
       ref="legacyRoot"
       class="legacy-workspace-host"
     />
