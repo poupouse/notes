@@ -81,9 +81,7 @@ const evaluationTheme = themeQuartz.withParams({
   spacing: 3,
 });
 
-export const startApp = async (): Promise<void> => {
-  const root = document.querySelector<HTMLElement>('#app');
-  if (!root) throw new Error('Application root not found');
+export const startApp = async (root: HTMLElement): Promise<void> => {
 
   const state: AppState = await loadAppState();
   let dictationDataMigrated = false;

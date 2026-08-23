@@ -10,7 +10,7 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx,.vue ."
   },
   "keywords": [],
   "author": "aurel",
@@ -28,14 +28,19 @@
     "@types/electron-squirrel-startup": "^1.0.2",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
+    "@vitejs/plugin-vue": "^5.2.4",
     "electron": "43.4.1",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-vue": "^9.32.0",
     "typescript": "~4.5.4",
     "vite": "^5.4.21"
   },
   "dependencies": {
+    "@primeuix/themes": "^1.2.5",
     "ag-grid-community": "^36.1.0",
-    "electron-squirrel-startup": "^1.0.1"
+    "electron-squirrel-startup": "^1.0.1",
+    "primevue": "^4.5.5",
+    "vue": "^3.5.41"
   }
 }

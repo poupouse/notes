@@ -26,8 +26,20 @@
  * ```
  */
 
+import { createApp } from 'vue';
+import PrimeVue from 'primevue/config';
+
+import App from './App.vue';
 import './index.css';
+import { carnetTheme } from './theme/carnet-theme';
 
-import { startApp } from './app-ui';
-
-void startApp();
+createApp(App)
+  .use(PrimeVue, {
+    theme: {
+      preset: carnetTheme,
+      options: {
+        darkModeSelector: false,
+      },
+    },
+  })
+  .mount('#app');
