@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
-import type { LegacyModalRequest } from '../ui/legacy-modal';
+import type { AppModalRequest } from '../ui/app-modal';
+import AppModalField from './AppModalField.vue';
 
 const props = defineProps<{
-  request?: LegacyModalRequest;
+  request?: AppModalRequest;
   error: string;
 }>();
 
@@ -76,7 +78,8 @@ const submit = (event: Event): void => {
             {{ request.title }}
           </h2>
         </div>
-        <button
+        <Button
+          unstyled
           type="button"
           class="icon-button"
           aria-label="Fermer"
@@ -86,35 +89,37 @@ const submit = (event: Event): void => {
             viewBox="0 0 24 24"
             aria-hidden="true"
           ><path d="m18 6-12 12M6 6l12 12" /></svg></span>
-        </button>
+        </Button>
       </div>
       <div class="modal-content">
-        <!-- Content is generated exclusively by the local legacy form builders during migration. -->
-        <!-- eslint-disable vue/no-v-html -->
-        <div
-          class="modal-fields"
-          v-html="request.fields"
-        />
-        <!-- eslint-enable vue/no-v-html -->
+        <div class="modal-fields">
+          <AppModalField
+            v-for="(field, index) in request.fields"
+            :key="`${field.kind}-${index}`"
+            :field="field"
+          />
+        </div>
         <p class="form-error">
           {{ error }}
         </p>
       </div>
       <div class="modal-actions">
-        <button
+        <Button
+          unstyled
           type="button"
           class="secondary-button"
           @click="emit('close')"
         >
           Annuler
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           class="primary-button"
           :class="{ 'destructive-button': request.destructive }"
           type="submit"
         >
           {{ request.submit }}
-        </button>
+        </Button>
       </div>
     </form>
   </Dialog>

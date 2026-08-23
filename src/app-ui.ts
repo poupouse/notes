@@ -16,7 +16,8 @@ import {
 import { loadAppState, saveAppState, type AppState } from './app-state';
 import { CompetencyStatus } from './domain';
 import type { Competency, CompetencyGroup, Dictation, DictationLevel, Student } from './domain';
-import type { AppPage, LegacyAppController, LegacyAppOptions } from './ui/app-navigation';
+import type { AppController, AppOptions, AppPage } from './ui/app-navigation';
+import type { AppModalField, AppModalOption } from './ui/app-modal';
 import type {
   CompetenciesPageSnapshot,
   CompetencyGroupSnapshot,
@@ -38,10 +39,6 @@ interface EvaluationRow {
   subjectAverage?: number | null;
   [competencyId: string]: string | number | null | undefined;
 }
-
-const escapeHtml = (value: string): string => value.replace(/[&<>'"]/g, (character) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
-}[character] ?? character));
 
 interface StatusOption {
   value: CompetencyStatus;
@@ -75,9 +72,8 @@ const evaluationTheme = themeQuartz.withParams({
 });
 
 export const startApp = async (
-  root: HTMLElement,
-  options: LegacyAppOptions,
-): Promise<LegacyAppController> => {
+  options: AppOptions,
+): Promise<AppController> => {
 
   const state: AppState = await loadAppState();
   let dictationDataMigrated = false;
@@ -380,7 +376,13 @@ export const startApp = async (
       return container;
     }
     const percentage = Math.round(value * 100);
-    container.innerHTML = `<strong>${percentage} %</strong><span><i style="width:${percentage}%"></i></span>`;
+    const label = document.createElement('strong');
+    label.textContent = `${percentage} %`;
+    const track = document.createElement('span');
+    const bar = document.createElement('i');
+    bar.style.width = `${percentage}%`;
+    track.append(bar);
+    container.append(label, track);
     return container;
   };
 
@@ -765,7 +767,6 @@ export const startApp = async (
     options.onDictationsChange(page === 'dictations' ? dictationsSnapshot() : undefined);
     options.onEvaluationsChange(page === 'evaluations' ? evaluationsSnapshot() : undefined);
     options.onStudentsChange(page === 'students' ? studentsSnapshot() : undefined);
-    root.replaceChildren();
     options.onShellChange({
       page,
       counts: {
@@ -786,14 +787,16 @@ export const startApp = async (
 
   const closeModal = options.modal.close;
   const error = options.modal.setError;
-  const field = (label: string, name: string, value = '', placeholder = ''): string => `<label class="form-field"><span>${label}</span><input type="text" name="${name}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" autocomplete="off" required></label>`;
+  const field = (label: string, name: string, value = '', placeholder = ''): AppModalField => ({
+    kind: 'input', name, label, value, placeholder, required: true,
+  });
   const modal = options.modal.open;
 
   const confirmDeletion = (title: string, message: string, remove: () => void): void => {
     modal({
       eyebrow: 'Confirmation',
       title,
-      fields: `<p class="confirmation-message">${escapeHtml(message)}</p>`,
+      fields: [{ kind: 'message', text: message, className: 'confirmation-message' }],
       submit: 'Supprimer',
       destructive: true,
       save: () => { closeModal(); remove(); },
@@ -802,7 +805,7 @@ export const startApp = async (
 
   const subjectModal = (id?: string): void => {
     const subject = state.subjects.find((item) => item.id === id);
-    modal({ eyebrow: 'Référentiel', title: subject ? 'Renommer la matière' : 'Nouvelle matière', fields: field('Nom de la matière', 'name', subject?.name, 'Ex. Histoire & Géographie'), submit: subject ? 'Enregistrer' : 'Créer la matière', save: (data) => {
+    modal({ eyebrow: 'Référentiel', title: subject ? 'Renommer la matière' : 'Nouvelle matière', fields: [field('Nom de la matière', 'name', subject?.name, 'Ex. Histoire & Géographie')], submit: subject ? 'Enregistrer' : 'Créer la matière', save: (data) => {
       const name = String(data.get('name') ?? '').trim(); if (!name) return error('Indiquez un nom de matière.');
       if (subject) subject.name = name; else { const created = { id: uid('subject'), name }; state.subjects.push(created); selectedSubjectId = created.id; }
       closeModal(); persist();
@@ -812,22 +815,28 @@ export const startApp = async (
   const groupModal = (id?: string, parentGroupId?: string): void => {
     const group = state.groups.find((item) => item.id === id);
     const parent = state.groups.find((item) => item.id === parentGroupId);
-    modal({ eyebrow: parent ? `Dans ${parent.name}` : 'Organisation', title: group ? 'Modifier le groupe' : parent ? 'Nouveau sous-groupe' : 'Nouveau groupe', fields: field('Nom du groupe', 'name', group?.name, 'Ex. Géométrie et mesures'), submit: group ? 'Enregistrer' : 'Créer le groupe', save: (data) => {
+    modal({ eyebrow: parent ? `Dans ${parent.name}` : 'Organisation', title: group ? 'Modifier le groupe' : parent ? 'Nouveau sous-groupe' : 'Nouveau groupe', fields: [field('Nom du groupe', 'name', group?.name, 'Ex. Géométrie et mesures')], submit: group ? 'Enregistrer' : 'Créer le groupe', save: (data) => {
       const name = String(data.get('name') ?? '').trim(); if (!name) return error('Indiquez un nom de groupe.');
       if (group) group.name = name; else state.groups.push({ id: uid('group'), subjectId: selectedSubjectId, parentGroupId, name });
       closeModal(); persist();
     } });
   };
 
-  const groupOptions = (selected?: string): string => {
-    const options = ['<option value="">Sans groupe</option>'];
-    const add = (parentId?: string, depth = 0): void => state.groups.filter((group) => group.subjectId === selectedSubjectId && group.parentGroupId === parentId).forEach((group) => { options.push(`<option value="${group.id}" ${selected === group.id ? 'selected' : ''}>${'— '.repeat(depth)}${escapeHtml(group.name)}</option>`); add(group.id, depth + 1); });
-    add(); return options.join('');
+  const groupOptions = (): AppModalOption[] => {
+    const options: AppModalOption[] = [{ value: '', label: 'Sans groupe' }];
+    const add = (parentId?: string, depth = 0): void => state.groups
+      .filter((group) => group.subjectId === selectedSubjectId && group.parentGroupId === parentId)
+      .forEach((group) => {
+        options.push({ value: group.id, label: `${'— '.repeat(depth)}${group.name}` });
+        add(group.id, depth + 1);
+      });
+    add();
+    return options;
   };
 
   const competencyModal = (id?: string, preferredGroup?: string): void => {
     const item = state.competencies.find((competency) => competency.id === id); if (!selectedSubjectId) return;
-    modal({ eyebrow: 'Référentiel pédagogique', title: item ? 'Modifier la compétence' : 'Nouvelle compétence', fields: `${field('Intitulé', 'name', item?.name, 'Ex. Poser et effectuer une addition')}${field('Numéro Éducation nationale', 'code', item?.nationalEducationNumber, 'Ex. C2-MATH-08')}<label class="form-field"><span>Groupe</span><select name="groupId">${groupOptions(item?.groupId ?? preferredGroup)}</select></label>`, submit: item ? 'Enregistrer' : 'Ajouter la compétence', save: (data) => {
+    modal({ eyebrow: 'Référentiel pédagogique', title: item ? 'Modifier la compétence' : 'Nouvelle compétence', fields: [field('Intitulé', 'name', item?.name, 'Ex. Poser et effectuer une addition'), field('Numéro Éducation nationale', 'code', item?.nationalEducationNumber, 'Ex. C2-MATH-08'), { kind: 'select', name: 'groupId', label: 'Groupe', value: item?.groupId ?? preferredGroup ?? '', options: groupOptions() }], submit: item ? 'Enregistrer' : 'Ajouter la compétence', save: (data) => {
       const name = String(data.get('name') ?? '').trim(); const code = String(data.get('code') ?? '').trim(); const groupId = String(data.get('groupId') ?? '') || undefined;
       if (!name || !code) return error('Complétez l’intitulé et le numéro officiel.');
       if (item) {
@@ -847,7 +856,7 @@ export const startApp = async (
 
   const studentModal = (id?: string): void => {
     const student = state.students.find((item) => item.id === id);
-    modal({ eyebrow: 'Classe', title: student ? 'Modifier l’élève' : 'Nouvel élève', fields: field('Prénom', 'firstName', student?.firstName, 'Ex. Camille'), submit: student ? 'Enregistrer' : 'Ajouter à la classe', save: (data) => {
+    modal({ eyebrow: 'Classe', title: student ? 'Modifier l’élève' : 'Nouvel élève', fields: [field('Prénom', 'firstName', student?.firstName, 'Ex. Camille')], submit: student ? 'Enregistrer' : 'Ajouter à la classe', save: (data) => {
       const firstName = String(data.get('firstName') ?? '').trim(); if (!firstName) return error('Indiquez le prénom de l’élève.');
       if (student) student.firstName = firstName; else { const created: Student = { id: uid('student'), firstName, manualNotes: [], dictationLevel: 1 }; state.students.push(created); selectedStudentId = created.id; }
       closeModal(); persist();
@@ -856,7 +865,7 @@ export const startApp = async (
 
   const noteModal = (studentId: string): void => {
     const student = state.students.find((item) => item.id === studentId); if (!student) return;
-    modal({ eyebrow: student.firstName, title: 'Ajouter une note de suivi', fields: '<label class="form-field"><span>Observation</span><textarea name="text" rows="5" placeholder="Écrivez votre observation…" required></textarea><small>Cette note reste enregistrée localement.</small></label>', submit: 'Enregistrer la note', save: (data) => {
+    modal({ eyebrow: student.firstName, title: 'Ajouter une note de suivi', fields: [{ kind: 'textarea', name: 'text', label: 'Observation', rows: 5, placeholder: 'Écrivez votre observation…', help: 'Cette note reste enregistrée localement.', required: true }], submit: 'Enregistrer la note', save: (data) => {
       const text = String(data.get('text') ?? '').trim(); if (!text) return error('Écrivez une observation.'); student.manualNotes.push({ id: uid('note'), text, createdAt: new Date().toISOString() }); closeModal(); persist();
     } });
   };
@@ -867,7 +876,25 @@ export const startApp = async (
     modal({
       eyebrow: 'Évaluation / Dictée',
       title: dictation ? 'Modifier la dictée' : 'Nouvelle dictée',
-      fields: `${field('Nom de la dictée', 'name', dictation?.name, 'Ex. Dictée 1')}<div class="dictation-word-count-fields">${([1, 2, 3] as DictationLevel[]).map((level) => `<label class="form-field"><span>Niveau ${level}</span><input type="number" name="level${level}Words" value="${wordCounts[level - 1]}" min="1" step="1" required><small>Nombre de mots</small></label>`).join('')}</div><p class="form-hint">Chaque élève sera calculé avec le total correspondant à son niveau.</p>`,
+      fields: [
+        field('Nom de la dictée', 'name', dictation?.name, 'Ex. Dictée 1'),
+        {
+          kind: 'group',
+          className: 'dictation-word-count-fields',
+          fields: ([1, 2, 3] as DictationLevel[]).map((level) => ({
+            kind: 'input',
+            inputType: 'number',
+            name: `level${level}Words`,
+            label: `Niveau ${level}`,
+            value: wordCounts[level - 1],
+            min: 1,
+            step: 1,
+            required: true,
+            help: 'Nombre de mots',
+          })),
+        },
+        { kind: 'message', text: 'Chaque élève sera calculé avec le total correspondant à son niveau.', className: 'form-hint' },
+      ],
       submit: dictation ? 'Enregistrer' : 'Créer la dictée',
       save: (data) => {
         const name = String(data.get('name') ?? '').trim();
@@ -903,7 +930,20 @@ export const startApp = async (
     modal({
       eyebrow: 'Niveaux de dictée',
       title: 'Niveaux des élèves',
-      fields: `<p class="form-hint">Ces niveaux sont enregistrés pour les prochaines dictées et appliqués immédiatement aux dictées sans résultat. Les dictées déjà notées conservent leur niveau historique.</p><div class="dictation-level-list">${students.map((student) => `<label><span>${escapeHtml(student.firstName)}</span><select name="level-${student.id}">${([1, 2, 3] as DictationLevel[]).map((level) => `<option value="${level}" ${level === (student.dictationLevel ?? 1) ? 'selected' : ''}>Niveau ${level}</option>`).join('')}</select></label>`).join('')}</div>`,
+      fields: [
+        { kind: 'message', text: 'Ces niveaux sont enregistrés pour les prochaines dictées et appliqués immédiatement aux dictées sans résultat. Les dictées déjà notées conservent leur niveau historique.', className: 'form-hint' },
+        {
+          kind: 'group',
+          className: 'dictation-level-list',
+          fields: students.map((student) => ({
+            kind: 'select',
+            name: `level-${student.id}`,
+            label: student.firstName,
+            value: student.dictationLevel ?? 1,
+            options: ([1, 2, 3] as DictationLevel[]).map((level) => ({ value: level, label: `Niveau ${level}` })),
+          })),
+        },
+      ],
       submit: 'Enregistrer les niveaux',
       save: (data) => {
         students.forEach((student) => {
@@ -935,7 +975,29 @@ export const startApp = async (
     modal({
       eyebrow: `${student.firstName} · ${dictation.name}`,
       title: 'Résultat de la dictée',
-      fields: `<label class="form-field"><span>Niveau de l’élève</span><select name="level">${([1, 2, 3] as DictationLevel[]).map((candidate) => `<option value="${candidate}" ${candidate === level ? 'selected' : ''}>Niveau ${candidate} · ${wordCounts[candidate - 1]} mots</option>`).join('')}</select><small>Ce choix sera repris par défaut pour les prochaines dictées.</small></label><label class="form-field"><span>Nombre d’erreurs</span><input type="number" name="mistakeCount" value="${existing?.mistakeCount ?? ''}" min="0" max="${Math.max(...wordCounts)}" step="1" placeholder="Laisser vide pour effacer"><small>Une saisie vide conserve le niveau mais efface le résultat.</small></label><label class="checkbox-field"><input type="checkbox" name="absent" ${existing?.absent ? 'checked' : ''}><span>Élève absent pour cette dictée</span></label>`,
+      fields: [
+        {
+          kind: 'select',
+          name: 'level',
+          label: 'Niveau de l’élève',
+          value: level,
+          options: ([1, 2, 3] as DictationLevel[]).map((candidate) => ({ value: candidate, label: `Niveau ${candidate} · ${wordCounts[candidate - 1]} mots` })),
+          help: 'Ce choix sera repris par défaut pour les prochaines dictées.',
+        },
+        {
+          kind: 'input',
+          inputType: 'number',
+          name: 'mistakeCount',
+          label: 'Nombre d’erreurs',
+          value: existing?.mistakeCount ?? '',
+          min: 0,
+          max: Math.max(...wordCounts),
+          step: 1,
+          placeholder: 'Laisser vide pour effacer',
+          help: 'Une saisie vide conserve le niveau mais efface le résultat.',
+        },
+        { kind: 'checkbox', name: 'absent', label: 'Élève absent pour cette dictée', checked: existing?.absent },
+      ],
       submit: 'Enregistrer',
       save: (data) => {
         const absent = data.get('absent') === 'on';
@@ -1106,7 +1168,6 @@ export const startApp = async (
       evaluationGridApi?.destroy();
       evaluationGridApi = undefined;
       closeModal();
-      root.replaceChildren();
     },
   };
 };

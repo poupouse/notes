@@ -1,4 +1,4 @@
-import type { LegacyModalBridge } from './legacy-modal';
+import type { AppModalBridge } from './app-modal';
 import type { CompetenciesPageController, CompetenciesPageSnapshot } from './competencies-page';
 import type { DictationsPageController, DictationsPageSnapshot } from './dictations-page';
 import type { EvaluationsPageController, EvaluationsPageSnapshot } from './evaluations-page';
@@ -18,16 +18,16 @@ export interface AppShellSnapshot {
   counts: AppNavigationCounts;
 }
 
-export interface LegacyAppOptions {
+export interface AppOptions {
   onShellChange: (snapshot: AppShellSnapshot) => void;
   onCompetenciesChange: (snapshot?: CompetenciesPageSnapshot) => void;
   onDictationsChange: (snapshot?: DictationsPageSnapshot) => void;
   onEvaluationsChange: (snapshot?: EvaluationsPageSnapshot) => void;
   onStudentsChange: (snapshot?: StudentsPageSnapshot) => void;
-  modal: LegacyModalBridge;
+  modal: AppModalBridge;
 }
 
-export interface LegacyAppController {
+export interface AppController {
   competencies: CompetenciesPageController;
   dictations: DictationsPageController;
   evaluations: EvaluationsPageController;

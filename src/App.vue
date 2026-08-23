@@ -8,14 +8,13 @@ import CompetenciesPage from './components/CompetenciesPage.vue';
 import DictationsPage from './components/DictationsPage.vue';
 import EvaluationsPage from './components/EvaluationsPage.vue';
 import StudentsPage from './components/StudentsPage.vue';
-import type { AppPage, AppShellSnapshot, LegacyAppController } from './ui/app-navigation';
+import type { AppController, AppPage, AppShellSnapshot } from './ui/app-navigation';
+import type { AppModalBridge, AppModalRequest } from './ui/app-modal';
 import type { CompetenciesPageSnapshot } from './ui/competencies-page';
 import type { DictationsPageSnapshot } from './ui/dictations-page';
 import type { EvaluationsPageSnapshot } from './ui/evaluations-page';
-import type { LegacyModalBridge, LegacyModalRequest } from './ui/legacy-modal';
 import type { StudentsPageSnapshot } from './ui/students-page';
 
-const legacyRoot = ref<HTMLElement | null>(null);
 const shell = reactive<AppShellSnapshot>({
   page: 'competencies',
   counts: {
@@ -25,16 +24,16 @@ const shell = reactive<AppShellSnapshot>({
     dictations: 0,
   },
 });
-const modalRequest = shallowRef<LegacyModalRequest>();
+const modalRequest = shallowRef<AppModalRequest>();
 const competenciesSnapshot = shallowRef<CompetenciesPageSnapshot>();
 const dictationsSnapshot = shallowRef<DictationsPageSnapshot>();
 const evaluationsSnapshot = shallowRef<EvaluationsPageSnapshot>();
 const studentsSnapshot = shallowRef<StudentsPageSnapshot>();
 const modalError = ref('');
-let controller: LegacyAppController | undefined;
+let controller: AppController | undefined;
 let disposed = false;
 
-const modal: LegacyModalBridge = {
+const modal: AppModalBridge = {
   open(request) {
     modalError.value = '';
     modalRequest.value = request;
@@ -90,8 +89,7 @@ const mountEvaluationGrid = (element: HTMLElement): void => controller?.evaluati
 const unmountEvaluationGrid = (): void => controller?.evaluations.unmountGrid();
 
 onMounted(async () => {
-  if (!legacyRoot.value) throw new Error('Legacy application root not found');
-  const mountedController = await startApp(legacyRoot.value, {
+  const mountedController = await startApp({
     modal,
     onShellChange(snapshot) {
       shell.page = snapshot.page;
@@ -171,11 +169,6 @@ onBeforeUnmount(() => {
       @select-subject="selectEvaluationSubject"
       @mount-grid="mountEvaluationGrid"
       @unmount-grid="unmountEvaluationGrid"
-    />
-    <div
-      ref="legacyRoot"
-      class="legacy-workspace-host"
-      hidden
     />
   </div>
   <AppModalHost
