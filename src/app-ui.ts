@@ -16,10 +16,9 @@ import {
 import { loadAppState, saveAppState, type AppState } from './app-state';
 import { CompetencyStatus } from './domain';
 import type { Competency, CompetencyGroup, Dictation, DictationLevel, Student } from './domain';
+import type { AppPage, LegacyAppController, LegacyAppOptions } from './ui/app-navigation';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
-
-type Page = 'competencies' | 'students' | 'evaluations' | 'dictations';
 
 interface EvaluationRow {
   studentId: string;
@@ -42,7 +41,6 @@ const icons = {
   trash: svg('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/>'),
   note: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m17 3 4 4L11 17l-4 1 1-4Z"/>'),
   close: svg('<path d="m18 6-12 12M6 6l12 12"/>'),
-  spark: svg('<path d="m12 3-1.4 4.2a5 5 0 0 1-3.2 3.2L3 12l4.4 1.6a5 5 0 0 1 3.2 3.2L12 21l1.4-4.2a5 5 0 0 1 3.2-3.2L21 12l-4.4-1.6a5 5 0 0 1-3.2-3.2Z"/>'),
   grid: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11M15 9v11"/>'),
 };
 
@@ -81,7 +79,10 @@ const evaluationTheme = themeQuartz.withParams({
   spacing: 3,
 });
 
-export const startApp = async (root: HTMLElement): Promise<void> => {
+export const startApp = async (
+  root: HTMLElement,
+  options: LegacyAppOptions,
+): Promise<LegacyAppController> => {
 
   const state: AppState = await loadAppState();
   let dictationDataMigrated = false;
@@ -110,7 +111,7 @@ export const startApp = async (root: HTMLElement): Promise<void> => {
       console.error('Unable to migrate dictation levels', error);
     });
   }
-  let page: Page = 'competencies';
+  let page: AppPage = 'competencies';
   let selectedSubjectId = state.subjects[0]?.id ?? '';
   let selectedStudentId = state.students[0]?.id ?? '';
   let competencySearch = '';
@@ -121,6 +122,7 @@ export const startApp = async (root: HTMLElement): Promise<void> => {
   let evaluationSubjectId = state.subjects.find((subject) =>
     state.competencies.some((competency) => competency.subjectId === subject.id))?.id ?? state.subjects[0]?.id ?? '';
   let evaluationGridApi: GridApi<EvaluationRow> | undefined;
+  const eventController = new AbortController();
   const collapsedGroups = new Set<string>();
   const uid = (prefix: string): string => {
     const randomValues = crypto.getRandomValues(new Uint32Array(2));
@@ -158,19 +160,6 @@ export const startApp = async (root: HTMLElement): Promise<void> => {
   const normalizeGroupOrder = (groupId?: string): void => {
     competenciesInGroup(groupId).forEach((item, index) => { item.sortOrder = index; });
   };
-
-  const sidebar = (): string => `
-    <aside class="sidebar">
-      <div class="brand"><div class="brand-mark">${icons.spark}</div><div><strong>Carnet</strong><span>Suivi de classe</span></div></div>
-      <nav class="main-nav"><p class="nav-label">Espace de travail</p>
-        <button class="nav-item ${page === 'competencies' ? 'active' : ''}" data-action="navigate" data-page="competencies">${icons.layers}<span>Compétences</span><b>${state.competencies.length}</b></button>
-        <button class="nav-item ${page === 'students' ? 'active' : ''}" data-action="navigate" data-page="students">${icons.users}<span>Élèves</span><b>${state.students.length}</b></button>
-        <button class="nav-item ${page === 'evaluations' || page === 'dictations' ? 'active' : ''}" data-action="navigate" data-page="evaluations">${icons.grid}<span>Évaluation</span><b>${state.competencyStatuses.length}</b></button>
-        <button class="nav-item nav-subitem ${page === 'dictations' ? 'active' : ''}" data-action="navigate" data-page="dictations"><span class="nav-branch">↳</span><span>Dictée</span><b>${state.dictations.length}</b></button>
-      </nav>
-      <div class="sidebar-tip"><div>${icons.spark}</div><strong>Tout est enregistré</strong><p>Vos modifications sont sauvegardées automatiquement sur cet appareil.</p></div>
-      <div class="profile"><div class="avatar small">CL</div><div><strong>Votre classe</strong><span>Espace professeure</span></div><span>•••</span></div>
-    </aside>`;
 
   const subjectRail = (): string => `
     <aside class="subject-rail">
@@ -857,7 +846,16 @@ export const startApp = async (root: HTMLElement): Promise<void> => {
         : page === 'evaluations'
           ? evaluationsPage()
           : dictationsPage();
-    root.innerHTML = `<div class="app-shell">${sidebar()}${pageContent}</div>`;
+    root.innerHTML = pageContent;
+    options.onShellChange({
+      page,
+      counts: {
+        competencies: state.competencies.length,
+        students: state.students.length,
+        evaluations: state.competencyStatuses.length,
+        dictations: state.dictations.length,
+      },
+    });
     if (page === 'evaluations') window.requestAnimationFrame(mountEvaluationGrid);
   };
 
@@ -870,9 +868,10 @@ export const startApp = async (root: HTMLElement): Promise<void> => {
 
   interface ModalOptions { eyebrow: string; title: string; fields: string; submit: string; destructive?: boolean; save: (data: FormData) => void }
   let modalReturnFocus: HTMLElement | null = null;
+  const modalInertRoot = root.closest<HTMLElement>('#app') ?? root;
   const closeModal = (): void => {
     document.querySelector<HTMLElement>('#app-modal')?.remove();
-    root.removeAttribute('inert');
+    modalInertRoot.removeAttribute('inert');
     if (modalReturnFocus?.isConnected) modalReturnFocus.focus({ preventScroll: true });
     modalReturnFocus = null;
   };
@@ -882,7 +881,7 @@ export const startApp = async (root: HTMLElement): Promise<void> => {
   const modal = (options: ModalOptions): void => {
     closeModal();
     modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    root.setAttribute('inert', '');
+    modalInertRoot.setAttribute('inert', '');
     document.body.insertAdjacentHTML('beforeend', `<div class="modal" id="app-modal"><form class="modal-card" id="modal-form" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-header"><div><p class="eyebrow">${escapeHtml(options.eyebrow)}</p><h2 id="modal-title">${escapeHtml(options.title)}</h2></div><button type="button" class="icon-button" data-modal-close aria-label="Fermer">${icons.close}</button></div><div class="modal-content">${options.fields}<p class="form-error" id="form-error"></p></div><div class="modal-actions"><button type="button" class="secondary-button" data-modal-close>Annuler</button><button class="primary-button${options.destructive ? ' destructive-button' : ''}" type="submit">${options.submit}</button></div></form></div>`);
     const layer = document.querySelector<HTMLElement>('#app-modal');
     const form = layer?.querySelector<HTMLFormElement>('#modal-form');
@@ -1106,8 +1105,7 @@ export const startApp = async (root: HTMLElement): Promise<void> => {
   root.addEventListener('click', (event) => {
     const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action]'); if (!button) return;
     const action = button.dataset.action; const id = button.dataset.id;
-    if (action === 'navigate') { page = button.dataset.page as Page; render(); }
-    else if (action === 'select-subject' && id) { selectedSubjectId = id; render(); }
+    if (action === 'select-subject' && id) { selectedSubjectId = id; render(); }
     else if (action === 'select-evaluation-subject' && id) { evaluationSubjectId = id; render(); }
     else if (action === 'new-dictation') dictationModal();
     else if (action === 'manage-dictation-levels') dictationLevelsModal();
@@ -1130,7 +1128,7 @@ export const startApp = async (root: HTMLElement): Promise<void> => {
     else if (action === 'new-note' && id) noteModal(id);
     else if (action === 'delete-note' && id && button.dataset.studentId) { const studentId = button.dataset.studentId; confirmDeletion('Supprimer cette note ?', 'Cette note de suivi ne sera plus visible.', () => { const student = state.students.find((item) => item.id === studentId); if (student) student.manualNotes = student.manualNotes.filter((note) => note.id !== id); persist(); }); }
     else if (action === 'delete-student' && id) confirmDeletion('Supprimer cet élève ?', 'Ses notes et ses résultats seront également supprimés.', () => { state.students = state.students.filter((student) => student.id !== id); state.competencyStatuses = state.competencyStatuses.filter((item) => item.studentId !== id); state.dictationResults = state.dictationResults.filter((item) => item.studentId !== id); selectedStudentId = state.students[0]?.id ?? ''; persist(); });
-  });
+  }, { signal: eventController.signal });
 
   root.addEventListener('input', (event) => {
     const input = (event.target as HTMLElement).closest<HTMLInputElement>('[data-search]'); if (!input) return;
@@ -1150,7 +1148,7 @@ export const startApp = async (root: HTMLElement): Promise<void> => {
     }
     if (input.dataset.search === 'competencies') competencySearch = input.value; else studentSearch = input.value;
     const position = input.selectionStart ?? input.value.length; render(); const next = root.querySelector<HTMLInputElement>(`[data-search="${input.dataset.search}"]`); next?.focus(); next?.setSelectionRange(position, position);
-  });
+  }, { signal: eventController.signal });
 
   root.addEventListener('dragstart', (event) => {
     const dragEvent = event as DragEvent;
@@ -1161,7 +1159,7 @@ export const startApp = async (root: HTMLElement): Promise<void> => {
     dragEvent.dataTransfer?.setData('text/plain', draggedCompetencyId);
     if (dragEvent.dataTransfer) dragEvent.dataTransfer.effectAllowed = 'move';
     window.requestAnimationFrame(() => handle.closest('.competency-row')?.classList.add('dragging'));
-  });
+  }, { signal: eventController.signal });
 
   root.addEventListener('dragover', (event) => {
     if (!draggedCompetencyId) return;
@@ -1177,7 +1175,7 @@ export const startApp = async (root: HTMLElement): Promise<void> => {
     if (row && row.dataset.competencyId !== draggedCompetencyId) {
       row.classList.add(dragEvent.clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2 ? 'drop-after' : 'drop-before');
     }
-  });
+  }, { signal: eventController.signal });
 
   root.addEventListener('drop', (event) => {
     if (!draggedCompetencyId) return;
@@ -1192,12 +1190,27 @@ export const startApp = async (root: HTMLElement): Promise<void> => {
     draggedCompetencyId = undefined;
     clearDropIndicators();
     if (moved) persist();
-  });
+  }, { signal: eventController.signal });
 
   root.addEventListener('dragend', () => {
     draggedCompetencyId = undefined;
     clearDropIndicators();
-  });
+  }, { signal: eventController.signal });
 
   render();
+
+  return {
+    navigate(nextPage) {
+      if (page === nextPage) return;
+      page = nextPage;
+      render();
+    },
+    destroy() {
+      eventController.abort();
+      evaluationGridApi?.destroy();
+      evaluationGridApi = undefined;
+      closeModal();
+      root.replaceChildren();
+    },
+  };
 };
