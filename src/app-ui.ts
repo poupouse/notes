@@ -17,6 +17,7 @@ import { loadAppState, saveAppState, type AppState } from './app-state';
 import { CompetencyStatus } from './domain';
 import type { Competency, CompetencyGroup, Dictation, DictationLevel, Student } from './domain';
 import type { AppPage, LegacyAppController, LegacyAppOptions } from './ui/app-navigation';
+import type { DictationsPageSnapshot } from './ui/dictations-page';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -741,77 +742,43 @@ export const startApp = async (
     return rates.length ? rates.reduce((total, rate) => total + rate, 0) / rates.length : null;
   };
 
-  const classDictationChart = (dictations: Dictation[]): string => {
-    const points = dictations.map((dictation, index) => ({
-      dictation,
-      index,
-      rate: dictationAverage(dictation),
-    }));
-    const numericPoints = points.filter((point): point is typeof point & { rate: number } =>
-      typeof point.rate === 'number');
-    if (!numericPoints.length) {
-      return `<div class="dictation-chart-empty class-chart-empty">${icons.grid}<strong>Aucune moyenne disponible</strong><span>La courbe apparaîtra dès que des résultats seront saisis.</span></div>`;
-    }
-
-    const left = 42;
-    const right = 22;
-    const top = 18;
-    const plotHeight = 210;
-    const bottom = 52;
-    const width = Math.max(720, left + right + Math.max(1, dictations.length - 1) * 86);
-    const height = top + plotHeight + bottom;
-    const xFor = (index: number): number => dictations.length === 1
-      ? left + (width - left - right) / 2
-      : left + index * ((width - left - right) / (dictations.length - 1));
-    const yFor = (rate: number): number => top + ((100 - rate) / 100) * plotHeight;
-    const segments: Array<Array<typeof numericPoints[number]>> = [];
-    numericPoints.forEach((point) => {
-      const current = segments[segments.length - 1];
-      if (!current || current[current.length - 1].index !== point.index - 1) segments.push([point]);
-      else current.push(point);
-    });
-    const grid = [0, 20, 40, 60, 80, 100].map((tick) => `<g><line class="dictation-chart-grid" x1="${left}" y1="${yFor(tick)}" x2="${width - right}" y2="${yFor(tick)}"/><text class="dictation-chart-y-label" x="${left - 8}" y="${yFor(tick) + 3}">${tick} %</text></g>`).join('');
-    const paths = segments.filter((segment) => segment.length > 1).map((segment) =>
-      `<polyline class="dictation-chart-line class-average-line" points="${segment.map((point) => `${xFor(point.index)},${yFor(point.rate)}`).join(' ')}"/>`).join('');
-    const markers = points.map((point) => {
-      const x = xFor(point.index);
-      const label = escapeHtml(point.dictation.name.length > 16 ? `${point.dictation.name.slice(0, 14)}…` : point.dictation.name);
-      const marker = typeof point.rate === 'number'
-        ? `<circle class="dictation-chart-point class-average-point" cx="${x}" cy="${yFor(point.rate)}" r="4.5"><title>${escapeHtml(point.dictation.name)} · moyenne ${point.rate.toFixed(2)} %</title></circle>`
-        : '';
-      return `${marker}<text class="dictation-chart-x-label" x="${x}" y="${top + plotHeight + 22}" transform="rotate(-30 ${x} ${top + plotHeight + 22})">${label}</text>`;
-    }).join('');
-    return `<div class="dictation-chart-card class-dictation-chart"><div class="dictation-chart-legend"><span><i class="class-average-legend"></i>Moyenne de la classe</span></div><div class="dictation-chart-scroll"><svg class="dictation-chart" viewBox="0 0 ${width} ${height}" style="min-width:${width}px" role="img" aria-label="Progression de la moyenne de classe en dictée, de 0 à 100 pour cent">${grid}${paths}${markers}</svg></div></div>`;
-  };
-
-  const dictationRateClass = (rate: number): string => rate >= 90 ? 'success' : rate >= 80 ? 'warning' : 'danger';
-
-  const dictationCell = (studentId: string, dictation: Dictation): string => {
-    const rate = dictationRate(studentId, dictation);
-    const level = studentDictationLevel(studentId, dictation);
-    const wordCount = dictationWordCountForStudent(studentId, dictation);
-    if (rate === 'absent') return `<button class="dictation-score absent" data-action="edit-dictation-result" data-student-id="${studentId}" data-id="${dictation.id}" title="Élève absent · Niveau ${level}"><span>ABS</span><small>N${level}</small></button>`;
-    if (rate === null) return `<button class="dictation-score empty" data-action="edit-dictation-result" data-student-id="${studentId}" data-id="${dictation.id}" title="Saisir le nombre d’erreurs · Niveau ${level}, ${wordCount} mots"><span>—</span><small>N${level}</small></button>`;
-    const result = state.dictationResults.find((item) => item.studentId === studentId && item.dictationId === dictation.id);
-    const mistakes = result?.mistakeCount ?? 0;
-    return `<button class="dictation-score ${dictationRateClass(rate)}" data-action="edit-dictation-result" data-student-id="${studentId}" data-id="${dictation.id}" title="${mistakes} erreur${mistakes > 1 ? 's' : ''} sur ${wordCount} mots · Niveau ${level}"><span>${rate.toFixed(2)} %</span><small>N${level}</small></button>`;
-  };
-
-  const dictationsPage = (): string => {
+  const dictationsSnapshot = (): DictationsPageSnapshot => {
     const query = dictationSearch.trim().toLocaleLowerCase('fr');
     const students = state.students.slice()
       .filter((student) => student.firstName.toLocaleLowerCase('fr').includes(query))
       .sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'));
     const dictations = state.dictations.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    return `<main class="workspace evaluation-workspace dictation-workspace">
-      <header class="page-header"><div><p class="eyebrow">Évaluation / Dictée</p><h1>Dictée</h1><p class="subtitle">Chaque niveau possède son propre nombre de mots et reste mémorisé pour chaque élève.</p></div><div class="page-header-actions"><button class="secondary-button" data-action="manage-dictation-levels">Niveaux des élèves</button><button class="primary-button" data-action="new-dictation">${icons.plus} Nouvelle dictée</button></div></header>
-      <div class="evaluation-tools"><label class="search-field">${icons.search}<input type="search" data-search="dictations" value="${escapeHtml(dictationSearch)}" placeholder="Rechercher un élève…"></label><div class="dictation-legend"><span><i class="legend-dot dictation-success"></i> 90 à 100 %</span><span><i class="legend-dot dictation-warning"></i> 80 à 89,99 %</span><span><i class="legend-dot dictation-danger"></i> moins de 80 %</span></div></div>
-      <section class="class-progress-section"><div class="class-progress-heading"><div><h2>Progression de la classe</h2><p>Moyenne de chaque dictée · échelle de 0 à 100 %</p></div></div>${classDictationChart(dictations)}</section>
-      <section class="evaluation-grid-card dictation-card">
-        <div class="grid-help"><strong>Résultats des dictées</strong><span>${state.students.length} élèves</span><span>${dictations.length} dictée${dictations.length > 1 ? 's' : ''}</span><span>Cliquez sur une case pour saisir les erreurs</span></div>
-        ${dictations.length ? `<div class="dictation-table-scroll"><table class="dictation-table"><thead><tr><th class="dictation-student-column">Élève</th>${dictations.map((dictation) => { const wordCounts = dictationWordCounts(dictation); return `<th><div class="dictation-header"><strong>${escapeHtml(dictation.name)}</strong><small>N1 ${wordCounts[0]} · N2 ${wordCounts[1]} · N3 ${wordCounts[2]}</small><span><button class="icon-button subtle" data-action="edit-dictation" data-id="${dictation.id}" title="Modifier">${icons.edit}</button><button class="icon-button subtle danger" data-action="delete-dictation" data-id="${dictation.id}" title="Supprimer">${icons.trash}</button></span></div></th>`; }).join('')}</tr></thead><tbody>${students.map((student) => `<tr><th class="dictation-student-column">${escapeHtml(student.firstName)}<small class="student-default-level">N${student.dictationLevel ?? 1}</small></th>${dictations.map((dictation) => `<td>${dictationCell(student.id, dictation)}</td>`).join('')}</tr>`).join('')}</tbody><tfoot><tr><th class="dictation-student-column">Moyenne</th>${dictations.map((dictation) => { const average = dictationAverage(dictation); return `<td><span class="dictation-average ${average === null ? 'empty' : dictationRateClass(average)}">${average === null ? '—' : `${average.toFixed(2)} %`}</span></td>`; }).join('')}</tr></tfoot></table></div>` : `<div class="empty-state dictation-empty">${icons.grid}<h3>Votre première dictée</h3><p>Définissez les niveaux des élèves, puis ajoutez les trois nombres de mots.</p><button class="primary-button" data-action="new-dictation">${icons.plus} Nouvelle dictée</button></div>`}
-      </section>
-    </main>`;
+    return {
+      search: dictationSearch,
+      totalStudentCount: state.students.length,
+      students: students.map((student) => ({
+        id: student.id,
+        firstName: student.firstName,
+        level: student.dictationLevel ?? 1,
+      })),
+      dictations: dictations.map((dictation) => ({
+        id: dictation.id,
+        name: dictation.name,
+        wordCounts: dictationWordCounts(dictation),
+        average: dictationAverage(dictation),
+      })),
+      scores: students.flatMap((student) => dictations.map((dictation) => {
+        const rate = dictationRate(student.id, dictation);
+        const level = studentDictationLevel(student.id, dictation);
+        const wordCount = dictationWordCountForStudent(student.id, dictation);
+        const result = state.dictationResults.find((item) =>
+          item.studentId === student.id && item.dictationId === dictation.id);
+        return {
+          studentId: student.id,
+          dictationId: dictation.id,
+          kind: rate === 'absent' ? 'absent' as const : rate === null ? 'empty' as const : 'rate' as const,
+          level,
+          wordCount,
+          rate: typeof rate === 'number' ? rate : undefined,
+          mistakeCount: result?.mistakeCount,
+        };
+      })),
+    };
   };
 
   const mountEvaluationGrid = (): void => {
@@ -838,13 +805,14 @@ export const startApp = async (
   const render = (): void => {
     evaluationGridApi?.destroy();
     evaluationGridApi = undefined;
+    options.onDictationsChange(page === 'dictations' ? dictationsSnapshot() : undefined);
     const pageContent = page === 'competencies'
       ? competenciesPage()
       : page === 'students'
         ? studentsPage()
         : page === 'evaluations'
           ? evaluationsPage()
-          : dictationsPage();
+          : '';
     root.innerHTML = pageContent;
     options.onShellChange({
       page,
@@ -1075,11 +1043,6 @@ export const startApp = async (
     const action = button.dataset.action; const id = button.dataset.id;
     if (action === 'select-subject' && id) { selectedSubjectId = id; render(); }
     else if (action === 'select-evaluation-subject' && id) { evaluationSubjectId = id; render(); }
-    else if (action === 'new-dictation') dictationModal();
-    else if (action === 'manage-dictation-levels') dictationLevelsModal();
-    else if (action === 'edit-dictation' && id) dictationModal(id);
-    else if (action === 'edit-dictation-result' && id && button.dataset.studentId) dictationResultModal(button.dataset.studentId, id);
-    else if (action === 'delete-dictation' && id) confirmDeletion('Supprimer cette dictée ?', 'Tous les résultats associés seront également supprimés.', () => { state.dictations = state.dictations.filter((item) => item.id !== id); state.dictationResults = state.dictationResults.filter((item) => item.dictationId !== id); persist(); });
     else if (action === 'new-subject') subjectModal();
     else if (action === 'edit-subject' && id) subjectModal(id);
     else if (action === 'new-group') groupModal();
@@ -1103,15 +1066,6 @@ export const startApp = async (
     if (input.dataset.search === 'evaluations') {
       evaluationSearch = input.value;
       evaluationGridApi?.setGridOption('quickFilterText', evaluationSearch);
-      return;
-    }
-    if (input.dataset.search === 'dictations') {
-      dictationSearch = input.value;
-      const position = input.selectionStart ?? input.value.length;
-      render();
-      const next = root.querySelector<HTMLInputElement>('[data-search="dictations"]');
-      next?.focus();
-      next?.setSelectionRange(position, position);
       return;
     }
     if (input.dataset.search === 'competencies') competencySearch = input.value; else studentSearch = input.value;
@@ -1168,6 +1122,23 @@ export const startApp = async (
   render();
 
   return {
+    dictations: {
+      setSearch(value) {
+        dictationSearch = value;
+        render();
+      },
+      create: dictationModal,
+      manageLevels: dictationLevelsModal,
+      edit: dictationModal,
+      remove(dictationId) {
+        confirmDeletion('Supprimer cette dictée ?', 'Tous les résultats associés seront également supprimés.', () => {
+          state.dictations = state.dictations.filter((item) => item.id !== dictationId);
+          state.dictationResults = state.dictationResults.filter((item) => item.dictationId !== dictationId);
+          persist();
+        });
+      },
+      editResult: dictationResultModal,
+    },
     navigate(nextPage) {
       if (page === nextPage) return;
       page = nextPage;

@@ -50,17 +50,19 @@ const initialState: AppState = {
     {
       id: 'student-1',
       firstName: 'Alice',
+      dictationLevel: 1,
       manualNotes: [{ id: 'note-1', text: 'Très bonne participation orale cette semaine.', createdAt: '2026-08-17T09:15:00.000Z' }],
     },
     {
       id: 'student-2',
       firstName: 'Baptiste',
+      dictationLevel: 1,
       manualNotes: [{ id: 'note-2', text: 'Penser à vérifier la copie des devoirs.', createdAt: '2026-08-18T15:40:00.000Z' }],
     },
-    { id: 'student-3', firstName: 'Chloé', manualNotes: [] },
-    { id: 'student-4', firstName: 'Dylan', manualNotes: [] },
-    { id: 'student-5', firstName: 'Emma', manualNotes: [] },
-    { id: 'student-6', firstName: 'Félix', manualNotes: [] },
+    { id: 'student-3', firstName: 'Chloé', dictationLevel: 1, manualNotes: [] },
+    { id: 'student-4', firstName: 'Dylan', dictationLevel: 1, manualNotes: [] },
+    { id: 'student-5', firstName: 'Emma', dictationLevel: 1, manualNotes: [] },
+    { id: 'student-6', firstName: 'Félix', dictationLevel: 1, manualNotes: [] },
   ],
   competencyStatuses: [],
   dictations: [],
@@ -110,5 +112,6 @@ export const loadAppState = async (): Promise<AppState> => {
   }
 };
 
-export const saveAppState = (state: AppState): Promise<void> =>
-  window.storage.saveSnapshot(state);
+export const saveAppState = async (state: AppState): Promise<void> => {
+  await window.storage.saveSnapshot(state);
+};
