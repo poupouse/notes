@@ -28,7 +28,7 @@ Pour une nouvelle fonctionnalité, placer le code dans la couche la plus adapté
 
 ## Architecture de la base de données
 
-La persistance est locale à chaque machine, dans un fichier SQLite situé dans `app.getPath('userData')`. Le stockage n’est pas un ensemble de tables métier classiques : il s’agit d’un journal d’événements append-only.
+La persistance est locale à chaque machine, dans un fichier SQLite situé dans `app.getPath('userData')`. Le stockage n’est pas un ensemble de tables métier classiques : il s’agit d’un journal d’événements append-only, qui constitue la source d’autorité de toutes les données.
 
 - La table `events` contient `sequence` (clé primaire auto-incrémentée), `stream_type`, `stream_key`, `event_type`, `payload` JSON, et `occurred_at`.
 - `stream_type` vaut `subject`, `group`, `competency`, `student` ou `assessment`.
@@ -38,8 +38,10 @@ La persistance est locale à chaque machine, dans un fichier SQLite situé dans 
 - La vue `current_events` ne conserve logiquement que le dernier événement de chaque couple `(stream_type, stream_key)` ; `current_assessments` filtre les événements du flux d’évaluation.
 - À l’ouverture, `SqliteEventStore` reconstruit un `AppState` à partir de `current_events`. Lors d’une sauvegarde, `replaceSnapshot` compare l’ancien et le nouvel état, écrit uniquement les changements dans une transaction `BEGIN IMMEDIATE`/`COMMIT`, puis met à jour le snapshot mémoire.
 - SQLite est configuré avec le journal WAL et les clés étrangères activées. Ne pas supprimer ou réécrire l’historique pour implémenter une suppression métier.
+- Les synchronisations futures se feront par fusion temporelle des event logs, selon une logique `last writer wins`. Chaque modification qui doit survivre à une synchronisation doit donc être représentée dans l’event log avec les informations temporelles nécessaires ; une table ou un snapshot dérivé ne peut jamais devenir la source d’autorité.
+- Des vues, index ou snapshots de lecture transitoires sont permis pour accélérer l’interface. Ils doivent être reconstruisibles à partir de l’event log et recalculés ou réconciliés pendant les synchronisations ; ne jamais dépendre d’une vue dérivée comme unique copie d’une donnée métier.
 
-Une évolution de donnée doit donc préserver la reconstruction depuis les événements existants. Si un nouveau flux est ajouté, mettre à jour le type `StreamType`, les contraintes SQLite, `mapsFor`, `eventsBetween` et `rebuildSnapshot` ensemble.
+Une évolution de donnée doit donc préserver la reconstruction depuis les événements existants et la fusion temporelle future. Si un nouveau flux est ajouté, mettre à jour le type `StreamType`, les contraintes SQLite, `mapsFor`, `eventsBetween` et `rebuildSnapshot` ensemble. Si une projection est ajoutée, documenter son caractère transitoire et prévoir explicitement son recalcul depuis l’event log.
 
 ## Types de données principaux
 
