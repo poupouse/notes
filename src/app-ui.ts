@@ -40,7 +40,6 @@ const icons = {
   edit: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/>'),
   trash: svg('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/>'),
   note: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m17 3 4 4L11 17l-4 1 1-4Z"/>'),
-  close: svg('<path d="m18 6-12 12M6 6l12 12"/>'),
   grid: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11M15 9v11"/>'),
 };
 
@@ -866,41 +865,10 @@ export const startApp = async (
     render();
   };
 
-  interface ModalOptions { eyebrow: string; title: string; fields: string; submit: string; destructive?: boolean; save: (data: FormData) => void }
-  let modalReturnFocus: HTMLElement | null = null;
-  const modalInertRoot = root.closest<HTMLElement>('#app') ?? root;
-  const closeModal = (): void => {
-    document.querySelector<HTMLElement>('#app-modal')?.remove();
-    modalInertRoot.removeAttribute('inert');
-    if (modalReturnFocus?.isConnected) modalReturnFocus.focus({ preventScroll: true });
-    modalReturnFocus = null;
-  };
-  const error = (message: string): void => { const element = document.querySelector('#form-error'); if (element) element.textContent = message; };
+  const closeModal = options.modal.close;
+  const error = options.modal.setError;
   const field = (label: string, name: string, value = '', placeholder = ''): string => `<label class="form-field"><span>${label}</span><input type="text" name="${name}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" autocomplete="off" required></label>`;
-
-  const modal = (options: ModalOptions): void => {
-    closeModal();
-    modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    modalInertRoot.setAttribute('inert', '');
-    document.body.insertAdjacentHTML('beforeend', `<div class="modal" id="app-modal"><form class="modal-card" id="modal-form" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-header"><div><p class="eyebrow">${escapeHtml(options.eyebrow)}</p><h2 id="modal-title">${escapeHtml(options.title)}</h2></div><button type="button" class="icon-button" data-modal-close aria-label="Fermer">${icons.close}</button></div><div class="modal-content">${options.fields}<p class="form-error" id="form-error"></p></div><div class="modal-actions"><button type="button" class="secondary-button" data-modal-close>Annuler</button><button class="primary-button${options.destructive ? ' destructive-button' : ''}" type="submit">${options.submit}</button></div></form></div>`);
-    const layer = document.querySelector<HTMLElement>('#app-modal');
-    const form = layer?.querySelector<HTMLFormElement>('#modal-form');
-    layer?.addEventListener('pointerdown', (event) => { if (event.target === layer) closeModal(); });
-    layer?.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); closeModal(); } });
-    layer?.querySelectorAll('[data-modal-close]').forEach((button) => button.addEventListener('click', closeModal));
-    form?.addEventListener('submit', (event) => { event.preventDefault(); options.save(new FormData(form)); });
-    const firstControl = form?.querySelector<HTMLElement>('input,textarea,select,button[type="submit"]');
-    const focusFirstControl = (): void => {
-      if (layer?.isConnected && firstControl?.isConnected) firstControl.focus({ preventScroll: true });
-    };
-    focusFirstControl();
-    window.requestAnimationFrame(focusFirstControl);
-    layer?.addEventListener('focusout', () => {
-      window.requestAnimationFrame(() => {
-        if (layer?.isConnected && !layer.contains(document.activeElement)) focusFirstControl();
-      });
-    });
-  };
+  const modal = options.modal.open;
 
   const confirmDeletion = (title: string, message: string, remove: () => void): void => {
     modal({

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue';
 
 import { startApp } from './app-ui';
+import AppModalHost from './components/AppModalHost.vue';
 import AppSidebar from './components/AppSidebar.vue';
 import type { AppPage, AppShellSnapshot, LegacyAppController } from './ui/app-navigation';
+import type { LegacyModalBridge, LegacyModalRequest } from './ui/legacy-modal';
 
 const legacyRoot = ref<HTMLElement | null>(null);
 const shell = reactive<AppShellSnapshot>({
@@ -15,16 +17,37 @@ const shell = reactive<AppShellSnapshot>({
     dictations: 0,
   },
 });
+const modalRequest = shallowRef<LegacyModalRequest>();
+const modalError = ref('');
 let controller: LegacyAppController | undefined;
 let disposed = false;
+
+const modal: LegacyModalBridge = {
+  open(request) {
+    modalError.value = '';
+    modalRequest.value = request;
+  },
+  close() {
+    modalRequest.value = undefined;
+    modalError.value = '';
+  },
+  setError(message) {
+    modalError.value = message;
+  },
+};
 
 const navigate = (page: AppPage): void => {
   controller?.navigate(page);
 };
 
+const submitModal = (data: FormData): void => {
+  modalRequest.value?.save(data);
+};
+
 onMounted(async () => {
   if (!legacyRoot.value) throw new Error('Legacy application root not found');
   const mountedController = await startApp(legacyRoot.value, {
+    modal,
     onShellChange(snapshot) {
       shell.page = snapshot.page;
       Object.assign(shell.counts, snapshot.counts);
@@ -52,4 +75,10 @@ onBeforeUnmount(() => {
       class="legacy-workspace-host"
     />
   </div>
+  <AppModalHost
+    :request="modalRequest"
+    :error="modalError"
+    @close="modal.close"
+    @submit="submitModal"
+  />
 </template>
