@@ -907,12 +907,20 @@ export const startApp = async (): Promise<void> => {
     modal({
       eyebrow: 'Niveaux de dictée',
       title: 'Niveaux des élèves',
-      fields: `<p class="form-hint">Ces niveaux seront repris automatiquement lors de chaque nouvelle dictée. Les anciennes dictées conserveront leur niveau historique.</p><div class="dictation-level-list">${students.map((student) => `<label><span>${escapeHtml(student.firstName)}</span><select name="level-${student.id}">${([1, 2, 3] as DictationLevel[]).map((level) => `<option value="${level}" ${level === (student.dictationLevel ?? 1) ? 'selected' : ''}>Niveau ${level}</option>`).join('')}</select></label>`).join('')}</div>`,
+      fields: `<p class="form-hint">Ces niveaux sont enregistrés pour les prochaines dictées et appliqués immédiatement aux dictées sans résultat. Les dictées déjà notées conservent leur niveau historique.</p><div class="dictation-level-list">${students.map((student) => `<label><span>${escapeHtml(student.firstName)}</span><select name="level-${student.id}">${([1, 2, 3] as DictationLevel[]).map((level) => `<option value="${level}" ${level === (student.dictationLevel ?? 1) ? 'selected' : ''}>Niveau ${level}</option>`).join('')}</select></label>`).join('')}</div>`,
       submit: 'Enregistrer les niveaux',
       save: (data) => {
         students.forEach((student) => {
           const level = Number(data.get(`level-${student.id}`));
-          if (level === 1 || level === 2 || level === 3) student.dictationLevel = level;
+          if (level !== 1 && level !== 2 && level !== 3) return;
+          student.dictationLevel = level;
+          state.dictations.forEach((dictation) => {
+            const hasResult = state.dictationResults.some((result) =>
+              result.studentId === student.id && result.dictationId === dictation.id);
+            if (hasResult) return;
+            dictation.studentLevels ??= {};
+            dictation.studentLevels[student.id] = level;
+          });
         });
         closeModal();
         persist();
