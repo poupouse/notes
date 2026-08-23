@@ -10,6 +10,7 @@ export type AssessmentId = string;
 export type CompetencyEvaluationId = string;
 export type ManualNoteId = string;
 export type DictationId = string;
+export type DictationLevel = 1 | 2 | 3;
 
 /** ISO-8601 date and time, for example: 2026-08-19T14:30:00.000Z. */
 export type IsoDateTime = string;
@@ -25,6 +26,9 @@ export interface Student {
   id: StudentId;
   firstName: string;
   manualNotes: ManualNote[];
+
+  /** Default level copied into each newly created dictation. */
+  dictationLevel?: DictationLevel;
 }
 
 export interface Subject {
@@ -69,7 +73,11 @@ export interface Assessment {
 export interface Dictation {
   id: DictationId;
   name: string;
-  totalWords: number;
+  /** Legacy single-level word count, retained for automatic migration. */
+  totalWords?: number;
+  wordCountsByLevel?: [number, number, number];
+  /** Snapshot of each student's level so historical rates never change. */
+  studentLevels?: Partial<Record<StudentId, DictationLevel>>;
   createdAt: IsoDateTime;
 }
 
