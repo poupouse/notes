@@ -15,11 +15,11 @@ import {
 
 import { loadAppState, saveAppState, type AppState } from './app-state';
 import { CompetencyStatus } from './domain';
-import type { Competency, CompetencyGroup, Student } from './domain';
+import type { Competency, CompetencyGroup, Dictation, Student } from './domain';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-type Page = 'competencies' | 'students' | 'evaluations';
+type Page = 'competencies' | 'students' | 'evaluations' | 'dictations';
 
 interface EvaluationRow {
   studentId: string;
@@ -92,6 +92,7 @@ export const startApp = async (): Promise<void> => {
   let competencySearch = '';
   let studentSearch = '';
   let evaluationSearch = '';
+  let dictationSearch = '';
   let draggedCompetencyId: string | undefined;
   let evaluationSubjectId = state.subjects.find((subject) =>
     state.competencies.some((competency) => competency.subjectId === subject.id))?.id ?? state.subjects[0]?.id ?? '';
@@ -140,7 +141,8 @@ export const startApp = async (): Promise<void> => {
       <nav class="main-nav"><p class="nav-label">Espace de travail</p>
         <button class="nav-item ${page === 'competencies' ? 'active' : ''}" data-action="navigate" data-page="competencies">${icons.layers}<span>Compétences</span><b>${state.competencies.length}</b></button>
         <button class="nav-item ${page === 'students' ? 'active' : ''}" data-action="navigate" data-page="students">${icons.users}<span>Élèves</span><b>${state.students.length}</b></button>
-        <button class="nav-item ${page === 'evaluations' ? 'active' : ''}" data-action="navigate" data-page="evaluations">${icons.grid}<span>Évaluation</span><b>${state.competencyStatuses.length}</b></button>
+        <button class="nav-item ${page === 'evaluations' || page === 'dictations' ? 'active' : ''}" data-action="navigate" data-page="evaluations">${icons.grid}<span>Évaluation</span><b>${state.competencyStatuses.length}</b></button>
+        <button class="nav-item nav-subitem ${page === 'dictations' ? 'active' : ''}" data-action="navigate" data-page="dictations"><span class="nav-branch">↳</span><span>Dictée</span><b>${state.dictations.length}</b></button>
       </nav>
       <div class="sidebar-tip"><div>${icons.spark}</div><strong>Tout est enregistré</strong><p>Vos modifications sont sauvegardées automatiquement sur cet appareil.</p></div>
       <div class="profile"><div class="avatar small">CL</div><div><strong>Votre classe</strong><span>Espace professeure</span></div><span>•••</span></div>
@@ -630,6 +632,48 @@ export const startApp = async (): Promise<void> => {
     </main>`;
   };
 
+  const dictationRate = (studentId: string, dictation: Dictation): number | null | 'absent' => {
+    const result = state.dictationResults.find((item) =>
+      item.studentId === studentId && item.dictationId === dictation.id);
+    if (!result) return null;
+    if (result.absent) return 'absent';
+    if (result.mistakeCount === undefined) return null;
+    return Math.max(0, Math.min(100, ((dictation.totalWords - result.mistakeCount) / dictation.totalWords) * 100));
+  };
+
+  const dictationAverage = (dictation: Dictation): number | null => {
+    const rates = state.students.map((student) => dictationRate(student.id, dictation))
+      .filter((rate): rate is number => typeof rate === 'number');
+    return rates.length ? rates.reduce((total, rate) => total + rate, 0) / rates.length : null;
+  };
+
+  const dictationRateClass = (rate: number): string => rate >= 90 ? 'success' : rate >= 80 ? 'warning' : 'danger';
+
+  const dictationCell = (studentId: string, dictation: Dictation): string => {
+    const rate = dictationRate(studentId, dictation);
+    if (rate === 'absent') return `<button class="dictation-score absent" data-action="edit-dictation-result" data-student-id="${studentId}" data-id="${dictation.id}" title="Élève absent">ABS</button>`;
+    if (rate === null) return `<button class="dictation-score empty" data-action="edit-dictation-result" data-student-id="${studentId}" data-id="${dictation.id}" title="Saisir le nombre d’erreurs">—</button>`;
+    const result = state.dictationResults.find((item) => item.studentId === studentId && item.dictationId === dictation.id);
+    const mistakes = result?.mistakeCount ?? 0;
+    return `<button class="dictation-score ${dictationRateClass(rate)}" data-action="edit-dictation-result" data-student-id="${studentId}" data-id="${dictation.id}" title="${mistakes} erreur${mistakes > 1 ? 's' : ''} sur ${dictation.totalWords} mots">${rate.toFixed(2)} %</button>`;
+  };
+
+  const dictationsPage = (): string => {
+    const query = dictationSearch.trim().toLocaleLowerCase('fr');
+    const students = state.students.slice()
+      .filter((student) => student.firstName.toLocaleLowerCase('fr').includes(query))
+      .sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'));
+    const dictations = state.dictations.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return `<main class="workspace evaluation-workspace dictation-workspace">
+      <header class="page-header"><div><p class="eyebrow">Évaluation / Dictée</p><h1>Dictée</h1><p class="subtitle">Saisissez le nombre d’erreurs : le pourcentage de réussite est calculé sur le nombre total de mots.</p></div><button class="primary-button" data-action="new-dictation">${icons.plus} Nouvelle dictée</button></header>
+      <div class="evaluation-tools"><label class="search-field">${icons.search}<input type="search" data-search="dictations" value="${escapeHtml(dictationSearch)}" placeholder="Rechercher un élève…"></label><div class="dictation-legend"><span><i class="legend-dot dictation-success"></i> 90 à 100 %</span><span><i class="legend-dot dictation-warning"></i> 80 à 89,99 %</span><span><i class="legend-dot dictation-danger"></i> moins de 80 %</span></div></div>
+      <section class="evaluation-grid-card dictation-card">
+        <div class="grid-help"><strong>Résultats des dictées</strong><span>${state.students.length} élèves</span><span>${dictations.length} dictée${dictations.length > 1 ? 's' : ''}</span><span>Cliquez sur une case pour saisir les erreurs</span></div>
+        ${dictations.length ? `<div class="dictation-table-scroll"><table class="dictation-table"><thead><tr><th class="dictation-student-column">Élève</th>${dictations.map((dictation) => `<th><div class="dictation-header"><strong>${escapeHtml(dictation.name)}</strong><small>${dictation.totalWords} mot${dictation.totalWords > 1 ? 's' : ''}</small><span><button class="icon-button subtle" data-action="edit-dictation" data-id="${dictation.id}" title="Modifier">${icons.edit}</button><button class="icon-button subtle danger" data-action="delete-dictation" data-id="${dictation.id}" title="Supprimer">${icons.trash}</button></span></div></th>`).join('')}</tr></thead><tbody>${students.map((student) => `<tr><th class="dictation-student-column">${escapeHtml(student.firstName)}</th>${dictations.map((dictation) => `<td>${dictationCell(student.id, dictation)}</td>`).join('')}</tr>`).join('')}</tbody><tfoot><tr><th class="dictation-student-column">Moyenne</th>${dictations.map((dictation) => { const average = dictationAverage(dictation); return `<td><span class="dictation-average ${average === null ? 'empty' : dictationRateClass(average)}">${average === null ? '—' : `${average.toFixed(2)} %`}</span></td>`; }).join('')}</tr></tfoot></table></div>` : `<div class="empty-state dictation-empty">${icons.grid}<h3>Votre première dictée</h3><p>Ajoutez son nom et son nombre total de mots pour commencer le suivi.</p><button class="primary-button" data-action="new-dictation">${icons.plus} Nouvelle dictée</button></div>`}
+      </section>
+    </main>`;
+  };
+
   const mountEvaluationGrid = (): void => {
     const gridElement = root.querySelector<HTMLElement>('#evaluation-grid');
     if (!gridElement) return;
@@ -658,7 +702,9 @@ export const startApp = async (): Promise<void> => {
       ? competenciesPage()
       : page === 'students'
         ? studentsPage()
-        : evaluationsPage();
+        : page === 'evaluations'
+          ? evaluationsPage()
+          : dictationsPage();
     root.innerHTML = `<div class="app-shell">${sidebar()}${pageContent}</div>`;
     if (page === 'evaluations') window.requestAnimationFrame(mountEvaluationGrid);
   };
@@ -777,6 +823,60 @@ export const startApp = async (): Promise<void> => {
     } });
   };
 
+  const dictationModal = (id?: string): void => {
+    const dictation = state.dictations.find((item) => item.id === id);
+    modal({
+      eyebrow: 'Évaluation / Dictée',
+      title: dictation ? 'Modifier la dictée' : 'Nouvelle dictée',
+      fields: `${field('Nom de la dictée', 'name', dictation?.name, 'Ex. Dictée 1')}<label class="form-field"><span>Nombre total de mots</span><input type="number" name="totalWords" value="${dictation?.totalWords ?? ''}" min="1" step="1" placeholder="Ex. 40" required><small>Le taux de réussite sera calculé à partir de ce total.</small></label>`,
+      submit: dictation ? 'Enregistrer' : 'Créer la dictée',
+      save: (data) => {
+        const name = String(data.get('name') ?? '').trim();
+        const totalWords = Number(data.get('totalWords'));
+        if (!name) return error('Indiquez un nom pour la dictée.');
+        if (!Number.isInteger(totalWords) || totalWords < 1) return error('Indiquez un nombre entier de mots supérieur à zéro.');
+        if (dictation) Object.assign(dictation, { name, totalWords });
+        else state.dictations.push({ id: uid('dictation'), name, totalWords, createdAt: new Date().toISOString() });
+        closeModal();
+        persist();
+      },
+    });
+  };
+
+  const dictationResultModal = (studentId: string, dictationId: string): void => {
+    const student = state.students.find((item) => item.id === studentId);
+    const dictation = state.dictations.find((item) => item.id === dictationId);
+    if (!student || !dictation) return;
+    const existing = state.dictationResults.find((item) =>
+      item.studentId === studentId && item.dictationId === dictationId);
+    modal({
+      eyebrow: `${student.firstName} · ${dictation.name}`,
+      title: 'Résultat de la dictée',
+      fields: `<label class="form-field"><span>Nombre d’erreurs</span><input type="number" name="mistakeCount" value="${existing?.mistakeCount ?? ''}" min="0" max="${dictation.totalWords}" step="1" placeholder="Laisser vide pour effacer"><small>Dictée de ${dictation.totalWords} mot${dictation.totalWords > 1 ? 's' : ''}. Une saisie vide efface le résultat.</small></label><label class="checkbox-field"><input type="checkbox" name="absent" ${existing?.absent ? 'checked' : ''}><span>Élève absent pour cette dictée</span></label>`,
+      submit: 'Enregistrer',
+      save: (data) => {
+        const absent = data.get('absent') === 'on';
+        const rawMistakeCount = String(data.get('mistakeCount') ?? '').trim();
+        if (!absent && rawMistakeCount === '') {
+          state.dictationResults = state.dictationResults.filter((item) =>
+            item.studentId !== studentId || item.dictationId !== dictationId);
+          closeModal();
+          persist();
+          return;
+        }
+        const mistakeCount = absent ? undefined : Number(rawMistakeCount);
+        if (!absent && (!Number.isInteger(mistakeCount) || mistakeCount < 0 || mistakeCount > dictation.totalWords)) {
+          return error(`Indiquez un nombre entier entre 0 et ${dictation.totalWords}.`);
+        }
+        const result = existing ?? { studentId, dictationId, updatedAt: new Date().toISOString() };
+        Object.assign(result, { mistakeCount, absent, updatedAt: new Date().toISOString() });
+        if (!existing) state.dictationResults.push(result);
+        closeModal();
+        persist();
+      },
+    });
+  };
+
   const descendants = (id: string): string[] => [id, ...state.groups.filter((group) => group.parentGroupId === id).flatMap((group) => descendants(group.id))];
 
   const clearDropIndicators = (): void => {
@@ -806,6 +906,10 @@ export const startApp = async (): Promise<void> => {
     if (action === 'navigate') { page = button.dataset.page as Page; render(); }
     else if (action === 'select-subject' && id) { selectedSubjectId = id; render(); }
     else if (action === 'select-evaluation-subject' && id) { evaluationSubjectId = id; render(); }
+    else if (action === 'new-dictation') dictationModal();
+    else if (action === 'edit-dictation' && id) dictationModal(id);
+    else if (action === 'edit-dictation-result' && id && button.dataset.studentId) dictationResultModal(button.dataset.studentId, id);
+    else if (action === 'delete-dictation' && id) confirmDeletion('Supprimer cette dictée ?', 'Tous les résultats associés seront également supprimés.', () => { state.dictations = state.dictations.filter((item) => item.id !== id); state.dictationResults = state.dictationResults.filter((item) => item.dictationId !== id); persist(); });
     else if (action === 'new-subject') subjectModal();
     else if (action === 'edit-subject' && id) subjectModal(id);
     else if (action === 'new-group') groupModal();
@@ -821,7 +925,7 @@ export const startApp = async (): Promise<void> => {
     else if (action === 'select-student' && id) { selectedStudentId = id; render(); }
     else if (action === 'new-note' && id) noteModal(id);
     else if (action === 'delete-note' && id && button.dataset.studentId) { const studentId = button.dataset.studentId; confirmDeletion('Supprimer cette note ?', 'Cette note de suivi ne sera plus visible.', () => { const student = state.students.find((item) => item.id === studentId); if (student) student.manualNotes = student.manualNotes.filter((note) => note.id !== id); persist(); }); }
-    else if (action === 'delete-student' && id) confirmDeletion('Supprimer cet élève ?', 'Ses notes et ses résultats seront également supprimés.', () => { state.students = state.students.filter((student) => student.id !== id); state.competencyStatuses = state.competencyStatuses.filter((item) => item.studentId !== id); selectedStudentId = state.students[0]?.id ?? ''; persist(); });
+    else if (action === 'delete-student' && id) confirmDeletion('Supprimer cet élève ?', 'Ses notes et ses résultats seront également supprimés.', () => { state.students = state.students.filter((student) => student.id !== id); state.competencyStatuses = state.competencyStatuses.filter((item) => item.studentId !== id); state.dictationResults = state.dictationResults.filter((item) => item.studentId !== id); selectedStudentId = state.students[0]?.id ?? ''; persist(); });
   });
 
   root.addEventListener('input', (event) => {
@@ -829,6 +933,15 @@ export const startApp = async (): Promise<void> => {
     if (input.dataset.search === 'evaluations') {
       evaluationSearch = input.value;
       evaluationGridApi?.setGridOption('quickFilterText', evaluationSearch);
+      return;
+    }
+    if (input.dataset.search === 'dictations') {
+      dictationSearch = input.value;
+      const position = input.selectionStart ?? input.value.length;
+      render();
+      const next = root.querySelector<HTMLInputElement>('[data-search="dictations"]');
+      next?.focus();
+      next?.setSelectionRange(position, position);
       return;
     }
     if (input.dataset.search === 'competencies') competencySearch = input.value; else studentSearch = input.value;

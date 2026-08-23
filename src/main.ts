@@ -42,7 +42,9 @@ const isAppState = (value: unknown): value is AppState => {
     Array.isArray(candidate.groups) &&
     Array.isArray(candidate.competencies) &&
     Array.isArray(candidate.students) &&
-    Array.isArray(candidate.competencyStatuses);
+    Array.isArray(candidate.competencyStatuses) &&
+    Array.isArray(candidate.dictations) &&
+    Array.isArray(candidate.dictationResults);
 };
 
 const configureStorage = (): void => {

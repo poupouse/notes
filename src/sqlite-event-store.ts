@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 import type { AppState } from './app-state';
 
-type StreamType = 'subject' | 'group' | 'competency' | 'student' | 'assessment';
+type StreamType = 'subject' | 'group' | 'competency' | 'student' | 'assessment' | 'dictation' | 'dictation-result';
 type EventType = 'upsert' | 'tombstone';
 
 interface StoredEvent {
@@ -25,10 +25,15 @@ const emptyState = (): AppState => ({
   competencies: [],
   students: [],
   competencyStatuses: [],
+  dictations: [],
+  dictationResults: [],
 });
 
 const assessmentCellKey = (studentId: string, competencyId: string): string =>
   JSON.stringify([studentId, competencyId]);
+
+const dictationResultCellKey = (studentId: string, dictationId: string): string =>
+  JSON.stringify([studentId, dictationId]);
 
 const mapsFor = (state: AppState): Record<StreamType, Map<string, unknown>> => ({
   subject: new Map(state.subjects.map((item) => [item.id, item])),
@@ -37,6 +42,11 @@ const mapsFor = (state: AppState): Record<StreamType, Map<string, unknown>> => (
   student: new Map(state.students.map((item) => [item.id, item])),
   assessment: new Map(state.competencyStatuses.map((item) => [
     assessmentCellKey(item.studentId, item.competencyId),
+    item,
+  ])),
+  dictation: new Map(state.dictations.map((item) => [item.id, item])),
+  'dictation-result': new Map(state.dictationResults.map((item) => [
+    dictationResultCellKey(item.studentId, item.dictationId),
     item,
   ])),
 });
@@ -84,6 +94,32 @@ export class SqliteEventStore {
 
   constructor(databasePath: string) {
     this.database = new DatabaseSync(databasePath);
+    const existingEventsSql = this.database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'events'",
+    ).all()[0]?.sql;
+    if (typeof existingEventsSql === 'string' && !existingEventsSql.includes("'dictation'")) {
+      this.database.exec(`
+        DROP VIEW IF EXISTS current_assessments;
+        DROP VIEW IF EXISTS current_events;
+        ALTER TABLE events RENAME TO events_before_dictations;
+        CREATE TABLE events (
+          sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+          stream_type TEXT NOT NULL CHECK (
+            stream_type IN ('subject', 'group', 'competency', 'student', 'assessment', 'dictation', 'dictation-result')
+          ),
+          stream_key TEXT NOT NULL,
+          event_type TEXT NOT NULL CHECK (event_type IN ('upsert', 'tombstone')),
+          payload TEXT,
+          occurred_at TEXT NOT NULL,
+          CHECK (
+            (event_type = 'upsert' AND payload IS NOT NULL) OR
+            (event_type = 'tombstone' AND payload IS NULL)
+          )
+        );
+        INSERT INTO events SELECT * FROM events_before_dictations;
+        DROP TABLE events_before_dictations;
+      `);
+    }
     this.database.exec(`
       PRAGMA journal_mode = WAL;
       PRAGMA foreign_keys = ON;
@@ -91,7 +127,7 @@ export class SqliteEventStore {
       CREATE TABLE IF NOT EXISTS events (
         sequence INTEGER PRIMARY KEY AUTOINCREMENT,
         stream_type TEXT NOT NULL CHECK (
-          stream_type IN ('subject', 'group', 'competency', 'student', 'assessment')
+          stream_type IN ('subject', 'group', 'competency', 'student', 'assessment', 'dictation', 'dictation-result')
         ),
         stream_key TEXT NOT NULL,
         event_type TEXT NOT NULL CHECK (event_type IN ('upsert', 'tombstone')),
@@ -122,6 +158,11 @@ export class SqliteEventStore {
       SELECT sequence, stream_key AS cell_key, event_type, payload, occurred_at
       FROM current_events
       WHERE stream_type = 'assessment';
+
+      CREATE VIEW IF NOT EXISTS current_dictations AS
+      SELECT sequence, stream_type, stream_key, event_type, payload, occurred_at
+      FROM current_events
+      WHERE stream_type IN ('dictation', 'dictation-result');
     `);
     this.snapshot = this.rebuildSnapshot();
   }
@@ -184,6 +225,8 @@ export class SqliteEventStore {
         case 'competency': snapshot.competencies.push(payload as AppState['competencies'][number]); break;
         case 'student': snapshot.students.push(payload as AppState['students'][number]); break;
         case 'assessment': snapshot.competencyStatuses.push(payload as AppState['competencyStatuses'][number]); break;
+        case 'dictation': snapshot.dictations.push(payload as AppState['dictations'][number]); break;
+        case 'dictation-result': snapshot.dictationResults.push(payload as AppState['dictationResults'][number]); break;
       }
     });
 

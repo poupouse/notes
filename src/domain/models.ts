@@ -9,6 +9,7 @@ export type CompetencyId = string;
 export type AssessmentId = string;
 export type CompetencyEvaluationId = string;
 export type ManualNoteId = string;
+export type DictationId = string;
 
 /** ISO-8601 date and time, for example: 2026-08-19T14:30:00.000Z. */
 export type IsoDateTime = string;
@@ -62,6 +63,23 @@ export interface Assessment {
   name: string;
   competencyIds: CompetencyId[];
   scheduledAt?: IsoDateTime;
+}
+
+/** A spelling dictation whose score is based on its total word count. */
+export interface Dictation {
+  id: DictationId;
+  name: string;
+  totalWords: number;
+  createdAt: IsoDateTime;
+}
+
+/** A student's raw result. The displayed success rate is derived from it. */
+export interface StudentDictationResult {
+  studentId: StudentId;
+  dictationId: DictationId;
+  mistakeCount?: number;
+  absent?: boolean;
+  updatedAt: IsoDateTime;
 }
 
 export enum CompetencyStatus {

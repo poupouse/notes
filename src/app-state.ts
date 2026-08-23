@@ -2,6 +2,8 @@ import type {
   Competency,
   CompetencyGroup,
   StudentCompetencyStatus,
+  StudentDictationResult,
+  Dictation,
   Student,
   Subject,
 } from './domain';
@@ -12,6 +14,8 @@ export interface AppState {
   competencies: Competency[];
   students: Student[];
   competencyStatuses: StudentCompetencyStatus[];
+  dictations: Dictation[];
+  dictationResults: StudentDictationResult[];
 }
 
 const STORAGE_KEY = 'carnet-classe-data-v1';
@@ -59,6 +63,8 @@ const initialState: AppState = {
     { id: 'student-6', firstName: 'Félix', manualNotes: [] },
   ],
   competencyStatuses: [],
+  dictations: [],
+  dictationResults: [],
 };
 
 export const loadAppState = async (): Promise<AppState> => {
@@ -93,6 +99,8 @@ export const loadAppState = async (): Promise<AppState> => {
       competencyStatuses: Array.isArray(parsedState.competencyStatuses)
         ? parsedState.competencyStatuses
         : [],
+      dictations: Array.isArray(parsedState.dictations) ? parsedState.dictations : [],
+      dictationResults: Array.isArray(parsedState.dictationResults) ? parsedState.dictationResults : [],
     };
     await window.storage.saveSnapshot(state);
     localStorage.removeItem(STORAGE_KEY);
