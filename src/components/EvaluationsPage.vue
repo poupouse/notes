@@ -33,9 +33,13 @@ onBeforeUnmount(() => emit('unmount-grid'));
   <main class="workspace evaluation-workspace">
     <header class="page-header">
       <div>
-        <p class="eyebrow">Suivi des acquis</p>
+        <p class="eyebrow">
+          Suivi des acquis
+        </p>
         <h1>Évaluation</h1>
-        <p class="subtitle">Sélectionnez une case, saisissez 1, 2, 9 ou 0, puis naviguez avec les flèches.</p>
+        <p class="subtitle">
+          Sélectionnez une case, saisissez 1, 2, 9 ou 0, puis naviguez avec les flèches.
+        </p>
       </div>
       <div class="autosave-indicator">
         <span /> Enregistrement automatique
@@ -47,7 +51,11 @@ onBeforeUnmount(() => emit('unmount-grid'));
         <span class="icon"><svg
           viewBox="0 0 24 24"
           aria-hidden="true"
-        ><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg></span>
+        ><circle
+          cx="11"
+          cy="11"
+          r="8"
+        /><path d="m21 21-4.35-4.35" /></svg></span>
         <InputText
           unstyled
           type="search"
@@ -63,7 +71,10 @@ onBeforeUnmount(() => emit('unmount-grid'));
           :key="item.className"
           :title="item.label"
         >
-          <i class="legend-dot" :class="`status-${item.className}`" />
+          <i
+            class="legend-dot"
+            :class="`status-${item.className}`"
+          />
           <template v-if="item.inputCode"><kbd>{{ item.inputCode }}</kbd> = {{ item.display }}</template>
           <template v-else>À passer</template>
         </span>
@@ -85,7 +96,10 @@ onBeforeUnmount(() => emit('unmount-grid'));
         :aria-selected="subject.selected"
         @click="emit('select-subject', subject.id)"
       >
-        <i class="subject-dot" :class="`color-${subject.colorIndex}`" />
+        <i
+          class="subject-dot"
+          :class="`color-${subject.colorIndex}`"
+        />
         <span>{{ subject.name }}</span>
         <b>{{ subject.competencyCount }}</b>
       </Button>

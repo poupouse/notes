@@ -75,9 +75,13 @@ const drop = (
   <main class="workspace">
     <header class="page-header">
       <div>
-        <p class="eyebrow">Référentiel pédagogique</p>
+        <p class="eyebrow">
+          Référentiel pédagogique
+        </p>
         <h1>Compétences</h1>
-        <p class="subtitle">Organisez votre référentiel par matière et par domaine.</p>
+        <p class="subtitle">
+          Organisez votre référentiel par matière et par domaine.
+        </p>
       </div>
       <Button
         unstyled
@@ -98,7 +102,11 @@ const drop = (
         <span class="icon"><svg
           viewBox="0 0 24 24"
           aria-hidden="true"
-        ><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg></span>
+        ><circle
+          cx="11"
+          cy="11"
+          r="8"
+        /><path d="m21 21-4.35-4.35" /></svg></span>
         <InputText
           unstyled
           type="search"
@@ -146,7 +154,10 @@ const drop = (
               class="subject-button"
               @click="emit('select-subject', subject.id)"
             >
-              <i class="subject-dot" :class="`color-${subject.colorIndex}`" />
+              <i
+                class="subject-dot"
+                :class="`color-${subject.colorIndex}`"
+              />
               <span>{{ subject.name }}</span>
               <b>{{ subject.competencyCount }}</b>
             </Button>
