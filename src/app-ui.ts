@@ -17,6 +17,11 @@ import { loadAppState, saveAppState, type AppState } from './app-state';
 import { CompetencyStatus } from './domain';
 import type { Competency, CompetencyGroup, Dictation, DictationLevel, Student } from './domain';
 import type { AppPage, LegacyAppController, LegacyAppOptions } from './ui/app-navigation';
+import type {
+  CompetenciesPageSnapshot,
+  CompetencyGroupSnapshot,
+  CompetencyItemSnapshot,
+} from './ui/competencies-page';
 import type { DictationsPageSnapshot } from './ui/dictations-page';
 import type {
   StudentDetailSnapshot,
@@ -37,13 +42,7 @@ const svg = (paths: string): string =>
   `<span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true">${paths}</svg></span>`;
 
 const icons = {
-  layers: svg('<path d="m12 3-9 5 9 5 9-5-9-5Z"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5"/>'),
   search: svg('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>'),
-  plus: svg('<path d="M12 5v14M5 12h14"/>'),
-  book: svg('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/>'),
-  chevron: svg('<path d="m9 18 6-6-6-6"/>'),
-  edit: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/>'),
-  trash: svg('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/>'),
 };
 
 const escapeHtml = (value: string): string => value.replace(/[&<>'"]/g, (character) => ({
@@ -120,7 +119,6 @@ export const startApp = async (
   let studentSearch = '';
   let evaluationSearch = '';
   let dictationSearch = '';
-  let draggedCompetencyId: string | undefined;
   let evaluationSubjectId = state.subjects.find((subject) =>
     state.competencies.some((competency) => competency.subjectId === subject.id))?.id ?? state.subjects[0]?.id ?? '';
   let evaluationGridApi: GridApi<EvaluationRow> | undefined;
@@ -163,25 +161,6 @@ export const startApp = async (
     competenciesInGroup(groupId).forEach((item, index) => { item.sortOrder = index; });
   };
 
-  const subjectRail = (): string => `
-    <aside class="subject-rail">
-      <div class="rail-heading"><span>Matières</span><button class="icon-button" data-action="new-subject" title="Ajouter">${icons.plus}</button></div>
-      <div class="subject-list">${state.subjects.map((subject, index) => `
-        <div class="subject-row ${subject.id === selectedSubjectId ? 'selected' : ''}">
-          <button class="subject-button" data-action="select-subject" data-id="${subject.id}"><i class="subject-dot color-${index % 5}"></i><span>${escapeHtml(subject.name)}</span><b>${subjectCount(subject.id)}</b></button>
-          <button class="row-edit" data-action="edit-subject" data-id="${subject.id}" title="Renommer">${icons.edit}</button>
-        </div>`).join('')}</div>
-      <button class="text-button rail-add" data-action="new-subject">${icons.plus} Nouvelle matière</button>
-    </aside>`;
-
-  const competencyRow = (id: string): string => {
-    const item = state.competencies.find((competency) => competency.id === id);
-    if (!item) return '';
-    const canReorder = !competencySearch.trim();
-    const dragTitle = canReorder ? 'Déplacer la compétence' : 'Effacez la recherche pour réorganiser';
-    return `<div class="competency-row" data-competency-id="${id}"><span class="drag-handle ${canReorder ? '' : 'disabled'}" draggable="${canReorder}" data-competency-id="${id}" title="${dragTitle}" aria-label="${dragTitle}" tabindex="0">⠿</span><div class="competency-main"><span>${escapeHtml(item.name)}</span><small>${escapeHtml(item.nationalEducationNumber)}</small></div><div class="row-actions"><button class="icon-button subtle" data-action="edit-competency" data-id="${id}" title="Modifier">${icons.edit}</button><button class="icon-button subtle danger" data-action="delete-competency" data-id="${id}" title="Supprimer">${icons.trash}</button></div></div>`;
-  };
-
   const groupMatches = (group: CompetencyGroup): boolean => {
     const query = competencySearch.trim().toLocaleLowerCase('fr');
     if (!query) return true;
@@ -190,34 +169,57 @@ export const startApp = async (
       state.groups.filter((child) => child.parentGroupId === group.id).some(groupMatches);
   };
 
-  const groupCard = (group: CompetencyGroup, depth = 0): string => {
-    if (!groupMatches(group)) return '';
+  const competencyItemSnapshot = (item: Competency): CompetencyItemSnapshot => ({
+    id: item.id,
+    name: item.name,
+    nationalEducationNumber: item.nationalEducationNumber,
+    canReorder: !competencySearch.trim(),
+  });
+
+  const competencyGroupSnapshot = (group: CompetencyGroup, depth = 0): CompetencyGroupSnapshot | undefined => {
+    if (!groupMatches(group)) return undefined;
     const query = competencySearch.trim().toLocaleLowerCase('fr');
     const items = orderedCompetencies(state.competencies.filter((item) => item.groupId === group.id && (!query || `${item.name} ${item.nationalEducationNumber}`.toLocaleLowerCase('fr').includes(query))));
-    const children = state.groups.filter((child) => child.parentGroupId === group.id);
-    const collapsed = collapsedGroups.has(group.id) && !query;
-    const count = state.competencies.filter((item) => item.groupId === group.id).length;
-    return `<section class="group-card depth-${Math.min(depth, 2)}">
-      <div class="group-header" data-drop-group-id="${group.id}"><button class="collapse-button ${collapsed ? '' : 'open'}" data-action="toggle-group" data-id="${group.id}">${icons.chevron}</button><div class="group-title"><strong>${escapeHtml(group.name)}</strong><span>${count} compétence${count > 1 ? 's' : ''}</span></div><div class="group-actions"><button class="quiet-button" data-action="new-subgroup" data-id="${group.id}">${icons.plus} Sous-groupe</button><button class="icon-button subtle" data-action="edit-group" data-id="${group.id}">${icons.edit}</button><button class="icon-button subtle danger" data-action="delete-group" data-id="${group.id}">${icons.trash}</button></div></div>
-      ${collapsed ? '' : `<div class="group-content" data-drop-group-id="${group.id}">${items.map((item) => competencyRow(item.id)).join('')}${children.map((child) => groupCard(child, depth + 1)).join('')}<button class="add-competency-inline" data-action="new-competency" data-group-id="${group.id}">${icons.plus} Ajouter une compétence</button></div>`}
-    </section>`;
+    const children = state.groups
+      .filter((child) => child.parentGroupId === group.id)
+      .map((child) => competencyGroupSnapshot(child, depth + 1))
+      .filter((child): child is CompetencyGroupSnapshot => Boolean(child));
+    return {
+      id: group.id,
+      name: group.name,
+      depth,
+      competencyCount: state.competencies.filter((item) => item.groupId === group.id).length,
+      collapsed: collapsedGroups.has(group.id) && !query,
+      competencies: items.map(competencyItemSnapshot),
+      children,
+    };
   };
 
-  const competenciesPage = (): string => {
+  const competenciesSnapshot = (): CompetenciesPageSnapshot => {
     const subject = state.subjects.find((item) => item.id === selectedSubjectId);
-    const groups = state.groups.filter((group) => group.subjectId === selectedSubjectId && !group.parentGroupId);
+    const groups = state.groups
+      .filter((group) => group.subjectId === selectedSubjectId && !group.parentGroupId)
+      .map((group) => competencyGroupSnapshot(group))
+      .filter((group): group is CompetencyGroupSnapshot => Boolean(group));
     const ungrouped = orderedCompetencies(state.competencies.filter((item) => item.subjectId === selectedSubjectId && !item.groupId));
-    return `<main class="workspace">
-      <header class="page-header"><div><p class="eyebrow">Référentiel pédagogique</p><h1>Compétences</h1><p class="subtitle">Organisez votre référentiel par matière et par domaine.</p></div><button class="primary-button" data-action="new-competency" ${subject ? '' : 'disabled'}>${icons.plus} Nouvelle compétence</button></header>
-      <div class="page-tools"><label class="search-field">${icons.search}<input type="search" data-search="competencies" value="${escapeHtml(competencySearch)}" placeholder="Rechercher une compétence ou un numéro…"></label><div class="summary-chip">${icons.book} ${subjectCount(selectedSubjectId)} compétences</div></div>
-      <div class="competency-layout">${subjectRail()}<div class="tree-panel">
-        ${subject ? `<div class="tree-heading"><div><span class="breadcrumb">Matières / ${escapeHtml(subject.name)}</span><h2>${escapeHtml(subject.name)}</h2></div><button class="secondary-button" data-action="new-group">${icons.plus} Nouveau groupe</button></div><div class="tree-list">${groups.map((group) => groupCard(group)).join('')}${ungrouped.length ? `<section class="group-card ungrouped"><div class="group-header" data-drop-group-id=""><div class="group-title"><strong>Sans groupe</strong><span>${ungrouped.length} compétence${ungrouped.length > 1 ? 's' : ''}</span></div></div><div class="group-content" data-drop-group-id="">${ungrouped.map((item) => competencyRow(item.id)).join('')}</div></section>` : ''}${!groups.length && !ungrouped.length ? emptyState('Une page encore blanche', 'Créez un groupe ou ajoutez votre première compétence.', 'new-group', 'Créer un groupe') : ''}</div>` : emptyState('Ajoutez une matière', 'Les compétences seront organisées dans vos matières.', 'new-subject', 'Nouvelle matière')}
-      </div></div>
-    </main>`;
+    return {
+      search: competencySearch,
+      selectedCompetencyCount: subjectCount(selectedSubjectId),
+      subjects: state.subjects.map((item, index) => ({
+        id: item.id,
+        name: item.name,
+        competencyCount: subjectCount(item.id),
+        colorIndex: index % 5,
+        selected: item.id === selectedSubjectId,
+      })),
+      selectedSubject: subject ? {
+        id: subject.id,
+        name: subject.name,
+        groups,
+        ungrouped: ungrouped.map(competencyItemSnapshot),
+      } : undefined,
+    };
   };
-
-  const emptyState = (title: string, text: string, action: string, label: string): string =>
-    `<div class="empty-state">${icons.layers}<h3>${title}</h3><p>${text}</p><button class="primary-button" data-action="${action}">${icons.plus} ${label}</button></div>`;
 
   const initials = (name: string): string => name.trim().slice(0, 2).toLocaleUpperCase('fr');
   const avatarColor = (name: string): number => [...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 6;
@@ -767,15 +769,14 @@ export const startApp = async (
   const render = (): void => {
     evaluationGridApi?.destroy();
     evaluationGridApi = undefined;
+    options.onCompetenciesChange(page === 'competencies' ? competenciesSnapshot() : undefined);
     options.onDictationsChange(page === 'dictations' ? dictationsSnapshot() : undefined);
     options.onStudentsChange(page === 'students' ? studentsSnapshot() : undefined);
-    const pageContent = page === 'competencies'
-      ? competenciesPage()
-      : page === 'students'
-        ? ''
-        : page === 'evaluations'
-          ? evaluationsPage()
-          : '';
+    const pageContent = page === 'competencies' || page === 'students'
+      ? ''
+      : page === 'evaluations'
+        ? evaluationsPage()
+        : '';
     root.innerHTML = pageContent;
     options.onShellChange({
       page,
@@ -980,12 +981,6 @@ export const startApp = async (
 
   const descendants = (id: string): string[] => [id, ...state.groups.filter((group) => group.parentGroupId === id).flatMap((group) => descendants(group.id))];
 
-  const clearDropIndicators = (): void => {
-    root.querySelectorAll('.drop-before,.drop-after,.drop-active,.dragging').forEach((element) => {
-      element.classList.remove('drop-before', 'drop-after', 'drop-active', 'dragging');
-    });
-  };
-
   const moveCompetency = (competencyId: string, groupId: string | undefined, targetId?: string, afterTarget = false): boolean => {
     const competency = state.competencies.find((item) => item.id === competencyId);
     if (!competency || competency.subjectId !== selectedSubjectId || targetId === competencyId) return false;
@@ -1004,18 +999,7 @@ export const startApp = async (
   root.addEventListener('click', (event) => {
     const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action]'); if (!button) return;
     const action = button.dataset.action; const id = button.dataset.id;
-    if (action === 'select-subject' && id) { selectedSubjectId = id; render(); }
-    else if (action === 'select-evaluation-subject' && id) { evaluationSubjectId = id; render(); }
-    else if (action === 'new-subject') subjectModal();
-    else if (action === 'edit-subject' && id) subjectModal(id);
-    else if (action === 'new-group') groupModal();
-    else if (action === 'new-subgroup' && id) groupModal(undefined, id);
-    else if (action === 'edit-group' && id) groupModal(id);
-    else if (action === 'toggle-group' && id) { collapsedGroups.has(id) ? collapsedGroups.delete(id) : collapsedGroups.add(id); render(); }
-    else if (action === 'new-competency') competencyModal(undefined, button.dataset.groupId);
-    else if (action === 'edit-competency' && id) competencyModal(id);
-    else if (action === 'delete-competency' && id) confirmDeletion('Supprimer cette compétence ?', 'Les évaluations associées à cette compétence seront également supprimées.', () => { state.competencies = state.competencies.filter((item) => item.id !== id); state.competencyStatuses = state.competencyStatuses.filter((item) => item.competencyId !== id); persist(); });
-    else if (action === 'delete-group' && id) confirmDeletion('Supprimer ce groupe ?', 'Ses sous-groupes seront supprimés. Les compétences seront conservées sans groupe.', () => { const ids = descendants(id); state.groups = state.groups.filter((group) => !ids.includes(group.id)); state.competencies.forEach((item) => { if (item.groupId && ids.includes(item.groupId)) item.groupId = undefined; }); normalizeGroupOrder(); persist(); });
+    if (action === 'select-evaluation-subject' && id) { evaluationSubjectId = id; render(); }
   }, { signal: eventController.signal });
 
   root.addEventListener('input', (event) => {
@@ -1025,61 +1009,56 @@ export const startApp = async (
       evaluationGridApi?.setGridOption('quickFilterText', evaluationSearch);
       return;
     }
-    if (input.dataset.search !== 'competencies') return;
-    competencySearch = input.value;
-    const position = input.selectionStart ?? input.value.length; render(); const next = root.querySelector<HTMLInputElement>(`[data-search="${input.dataset.search}"]`); next?.focus(); next?.setSelectionRange(position, position);
-  }, { signal: eventController.signal });
-
-  root.addEventListener('dragstart', (event) => {
-    const dragEvent = event as DragEvent;
-    const handle = (event.target as HTMLElement).closest<HTMLElement>('.drag-handle[data-competency-id]');
-    if (!handle || competencySearch.trim()) return dragEvent.preventDefault();
-    draggedCompetencyId = handle.dataset.competencyId;
-    if (!draggedCompetencyId) return dragEvent.preventDefault();
-    dragEvent.dataTransfer?.setData('text/plain', draggedCompetencyId);
-    if (dragEvent.dataTransfer) dragEvent.dataTransfer.effectAllowed = 'move';
-    window.requestAnimationFrame(() => handle.closest('.competency-row')?.classList.add('dragging'));
-  }, { signal: eventController.signal });
-
-  root.addEventListener('dragover', (event) => {
-    if (!draggedCompetencyId) return;
-    const dragEvent = event as DragEvent;
-    const target = event.target as HTMLElement;
-    const row = target.closest<HTMLElement>('.competency-row[data-competency-id]');
-    const dropZone = (row ?? target).closest<HTMLElement>('[data-drop-group-id]');
-    if (!dropZone) return;
-    dragEvent.preventDefault();
-    if (dragEvent.dataTransfer) dragEvent.dataTransfer.dropEffect = 'move';
-    root.querySelectorAll('.drop-before,.drop-after,.drop-active').forEach((element) => element.classList.remove('drop-before', 'drop-after', 'drop-active'));
-    dropZone.classList.add('drop-active');
-    if (row && row.dataset.competencyId !== draggedCompetencyId) {
-      row.classList.add(dragEvent.clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2 ? 'drop-after' : 'drop-before');
-    }
-  }, { signal: eventController.signal });
-
-  root.addEventListener('drop', (event) => {
-    if (!draggedCompetencyId) return;
-    const dragEvent = event as DragEvent;
-    const target = event.target as HTMLElement;
-    const row = target.closest<HTMLElement>('.competency-row[data-competency-id]');
-    const dropZone = (row ?? target).closest<HTMLElement>('[data-drop-group-id]');
-    if (!dropZone) return;
-    dragEvent.preventDefault();
-    const afterTarget = Boolean(row && dragEvent.clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2);
-    const moved = moveCompetency(draggedCompetencyId, dropZone.dataset.dropGroupId || undefined, row?.dataset.competencyId, afterTarget);
-    draggedCompetencyId = undefined;
-    clearDropIndicators();
-    if (moved) persist();
-  }, { signal: eventController.signal });
-
-  root.addEventListener('dragend', () => {
-    draggedCompetencyId = undefined;
-    clearDropIndicators();
   }, { signal: eventController.signal });
 
   render();
 
   return {
+    competencies: {
+      setSearch(value) {
+        competencySearch = value;
+        render();
+      },
+      selectSubject(subjectId) {
+        selectedSubjectId = subjectId;
+        render();
+      },
+      createSubject: subjectModal,
+      editSubject: subjectModal,
+      createGroup(parentGroupId) {
+        groupModal(undefined, parentGroupId);
+      },
+      editGroup: groupModal,
+      toggleGroup(groupId) {
+        collapsedGroups.has(groupId) ? collapsedGroups.delete(groupId) : collapsedGroups.add(groupId);
+        render();
+      },
+      removeGroup(groupId) {
+        confirmDeletion('Supprimer ce groupe ?', 'Ses sous-groupes seront supprimés. Les compétences seront conservées sans groupe.', () => {
+          const ids = descendants(groupId);
+          state.groups = state.groups.filter((group) => !ids.includes(group.id));
+          state.competencies.forEach((item) => {
+            if (item.groupId && ids.includes(item.groupId)) item.groupId = undefined;
+          });
+          normalizeGroupOrder();
+          persist();
+        });
+      },
+      createCompetency(groupId) {
+        competencyModal(undefined, groupId);
+      },
+      editCompetency: competencyModal,
+      removeCompetency(competencyId) {
+        confirmDeletion('Supprimer cette compétence ?', 'Les évaluations associées à cette compétence seront également supprimées.', () => {
+          state.competencies = state.competencies.filter((item) => item.id !== competencyId);
+          state.competencyStatuses = state.competencyStatuses.filter((item) => item.competencyId !== competencyId);
+          persist();
+        });
+      },
+      moveCompetency(competencyId, groupId, targetId, afterTarget) {
+        if (moveCompetency(competencyId, groupId, targetId, afterTarget)) persist();
+      },
+    },
     dictations: {
       setSearch(value) {
         dictationSearch = value;

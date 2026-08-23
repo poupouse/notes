@@ -4,9 +4,11 @@ import { onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue';
 import { startApp } from './app-ui';
 import AppModalHost from './components/AppModalHost.vue';
 import AppSidebar from './components/AppSidebar.vue';
+import CompetenciesPage from './components/CompetenciesPage.vue';
 import DictationsPage from './components/DictationsPage.vue';
 import StudentsPage from './components/StudentsPage.vue';
 import type { AppPage, AppShellSnapshot, LegacyAppController } from './ui/app-navigation';
+import type { CompetenciesPageSnapshot } from './ui/competencies-page';
 import type { DictationsPageSnapshot } from './ui/dictations-page';
 import type { LegacyModalBridge, LegacyModalRequest } from './ui/legacy-modal';
 import type { StudentsPageSnapshot } from './ui/students-page';
@@ -22,6 +24,7 @@ const shell = reactive<AppShellSnapshot>({
   },
 });
 const modalRequest = shallowRef<LegacyModalRequest>();
+const competenciesSnapshot = shallowRef<CompetenciesPageSnapshot>();
 const dictationsSnapshot = shallowRef<DictationsPageSnapshot>();
 const studentsSnapshot = shallowRef<StudentsPageSnapshot>();
 const modalError = ref('');
@@ -50,6 +53,19 @@ const submitModal = (data: FormData): void => {
   modalRequest.value?.save(data);
 };
 
+const searchCompetencies = (value: string): void => controller?.competencies.setSearch(value);
+const selectSubject = (id: string): void => controller?.competencies.selectSubject(id);
+const createSubject = (): void => controller?.competencies.createSubject();
+const editSubject = (id: string): void => controller?.competencies.editSubject(id);
+const createGroup = (parentId?: string): void => controller?.competencies.createGroup(parentId);
+const editGroup = (id: string): void => controller?.competencies.editGroup(id);
+const toggleGroup = (id: string): void => controller?.competencies.toggleGroup(id);
+const removeGroup = (id: string): void => controller?.competencies.removeGroup(id);
+const createCompetency = (groupId?: string): void => controller?.competencies.createCompetency(groupId);
+const editCompetency = (id: string): void => controller?.competencies.editCompetency(id);
+const removeCompetency = (id: string): void => controller?.competencies.removeCompetency(id);
+const moveCompetency = (id: string, groupId: string | undefined, targetId?: string, afterTarget?: boolean): void =>
+  controller?.competencies.moveCompetency(id, groupId, targetId, afterTarget);
 const searchDictations = (value: string): void => controller?.dictations.setSearch(value);
 const createDictation = (): void => controller?.dictations.create();
 const manageDictationLevels = (): void => controller?.dictations.manageLevels();
@@ -73,6 +89,9 @@ onMounted(async () => {
     onShellChange(snapshot) {
       shell.page = snapshot.page;
       Object.assign(shell.counts, snapshot.counts);
+    },
+    onCompetenciesChange(snapshot) {
+      competenciesSnapshot.value = snapshot;
     },
     onDictationsChange(snapshot) {
       dictationsSnapshot.value = snapshot;
@@ -98,6 +117,22 @@ onBeforeUnmount(() => {
       :counts="shell.counts"
       @navigate="navigate"
     />
+    <CompetenciesPage
+      v-if="shell.page === 'competencies' && competenciesSnapshot"
+      :snapshot="competenciesSnapshot"
+      @search="searchCompetencies"
+      @select-subject="selectSubject"
+      @create-subject="createSubject"
+      @edit-subject="editSubject"
+      @create-group="createGroup"
+      @edit-group="editGroup"
+      @toggle-group="toggleGroup"
+      @remove-group="removeGroup"
+      @create-competency="createCompetency"
+      @edit-competency="editCompetency"
+      @remove-competency="removeCompetency"
+      @move-competency="moveCompetency"
+    />
     <DictationsPage
       v-if="shell.page === 'dictations' && dictationsSnapshot"
       :snapshot="dictationsSnapshot"
@@ -120,7 +155,7 @@ onBeforeUnmount(() => {
       @remove-note="removeStudentNote"
     />
     <div
-      v-show="shell.page !== 'dictations' && shell.page !== 'students'"
+      v-show="shell.page === 'evaluations'"
       ref="legacyRoot"
       class="legacy-workspace-host"
     />
