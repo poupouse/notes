@@ -297,6 +297,72 @@ export const startApp = async (): Promise<void> => {
     }).join('')}
   </div>`;
 
+  const studentDictationChart = (student: Student): string => {
+    const dictations = state.dictations.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const points = dictations.map((dictation, index) => ({
+      dictation,
+      index,
+      rate: dictationRate(student.id, dictation),
+      level: studentDictationLevel(student.id, dictation),
+    }));
+    const numericPoints = points.filter((point): point is typeof point & { rate: number } =>
+      typeof point.rate === 'number');
+    if (!dictations.length || !numericPoints.length) {
+      return `<div class="dictation-chart-empty">${icons.grid}<strong>Aucun résultat de dictée</strong><span>La courbe apparaîtra dès qu’un premier résultat sera saisi.</span></div>`;
+    }
+
+    const left = 42;
+    const right = 22;
+    const top = 18;
+    const plotHeight = 210;
+    const bottom = 52;
+    const width = Math.max(560, left + right + Math.max(1, dictations.length - 1) * 78);
+    const height = top + plotHeight + bottom;
+    const xFor = (index: number): number => dictations.length === 1
+      ? left + (width - left - right) / 2
+      : left + index * ((width - left - right) / (dictations.length - 1));
+    const yFor = (rate: number): number => top + ((100 - rate) / 100) * plotHeight;
+
+    const segments: Array<Array<typeof numericPoints[number]>> = [];
+    numericPoints.forEach((point) => {
+      const current = segments[segments.length - 1];
+      if (!current || current[current.length - 1].index !== point.index - 1) segments.push([point]);
+      else current.push(point);
+    });
+
+    let trendLine = '';
+    if (numericPoints.length >= 2) {
+      const count = numericPoints.length;
+      const sumX = numericPoints.reduce((sum, point) => sum + point.index, 0);
+      const sumY = numericPoints.reduce((sum, point) => sum + point.rate, 0);
+      const sumXY = numericPoints.reduce((sum, point) => sum + point.index * point.rate, 0);
+      const sumXX = numericPoints.reduce((sum, point) => sum + point.index * point.index, 0);
+      const denominator = count * sumXX - sumX * sumX;
+      if (denominator !== 0) {
+        const slope = (count * sumXY - sumX * sumY) / denominator;
+        const intercept = (sumY - slope * sumX) / count;
+        const firstRate = Math.max(0, Math.min(100, intercept));
+        const lastIndex = dictations.length - 1;
+        const lastRate = Math.max(0, Math.min(100, intercept + slope * lastIndex));
+        trendLine = `<line class="dictation-chart-trend" x1="${xFor(0)}" y1="${yFor(firstRate)}" x2="${xFor(lastIndex)}" y2="${yFor(lastRate)}"/>`;
+      }
+    }
+
+    const grid = [0, 20, 40, 60, 80, 100].map((tick) => `<g><line class="dictation-chart-grid" x1="${left}" y1="${yFor(tick)}" x2="${width - right}" y2="${yFor(tick)}"/><text class="dictation-chart-y-label" x="${left - 8}" y="${yFor(tick) + 3}">${tick} %</text></g>`).join('');
+    const paths = segments.filter((segment) => segment.length > 1).map((segment) =>
+      `<polyline class="dictation-chart-line" points="${segment.map((point) => `${xFor(point.index)},${yFor(point.rate)}`).join(' ')}"/>`).join('');
+    const markers = points.map((point) => {
+      const x = xFor(point.index);
+      const label = escapeHtml(point.dictation.name.length > 14 ? `${point.dictation.name.slice(0, 12)}…` : point.dictation.name);
+      const marker = typeof point.rate === 'number'
+        ? `<circle class="dictation-chart-point" cx="${x}" cy="${yFor(point.rate)}" r="4.5"><title>${escapeHtml(point.dictation.name)} · ${point.rate.toFixed(2)} % · Niveau ${point.level}</title></circle>`
+        : '';
+      return `${marker}<text class="dictation-chart-x-label" x="${x}" y="${top + plotHeight + 22}" transform="rotate(-30 ${x} ${top + plotHeight + 22})">${label}</text>`;
+    }).join('');
+
+    return `<div class="dictation-chart-card"><div class="dictation-chart-legend"><span><i class="result-line"></i>Résultats</span>${trendLine ? '<span><i class="trend-line"></i>Tendance</span>' : ''}</div><div class="dictation-chart-scroll"><svg class="dictation-chart" viewBox="0 0 ${width} ${height}" style="min-width:${width}px" role="img" aria-label="Progression de ${escapeHtml(student.firstName)} en dictée, de 0 à 100 pour cent">${grid}${trendLine}${paths}${markers}</svg></div></div>`;
+  };
+
   const studentDetail = (student?: Student): string => {
     if (!student) return `<aside class="student-detail empty-detail">${icons.users}<p>Sélectionnez un élève</p></aside>`;
     const notes = [...student.manualNotes].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -305,6 +371,8 @@ export const startApp = async (): Promise<void> => {
       <div class="student-identity"><div class="avatar large avatar-${avatarColor(student.firstName)}">${escapeHtml(initials(student.firstName))}</div><div><h2>${escapeHtml(student.firstName)}</h2><p>${notes.length} note${notes.length > 1 ? 's' : ''} personnelle${notes.length > 1 ? 's' : ''}</p></div></div>
       <div class="detail-section-heading"><div><h3>Réussite par domaine</h3><p>Matières, groupes et sous-groupes</p></div></div>
       ${studentSuccessOverview(student)}
+      <div class="detail-section-heading"><div><h3>Progression en dictée</h3><p>Résultats sur l’année · échelle de 0 à 100 %</p></div></div>
+      ${studentDictationChart(student)}
       <div class="detail-section-heading"><div><h3>Notes de suivi</h3><p>Observations privées et rappels</p></div><button class="secondary-button compact" data-action="new-note" data-id="${student.id}">${icons.plus} Ajouter</button></div>
       <div class="notes-list">${notes.map((note) => `<article class="note-card"><div class="note-meta"><span>${formatDate(note.createdAt)}</span><button class="icon-button subtle danger" data-action="delete-note" data-id="${note.id}" data-student-id="${student.id}">${icons.trash}</button></div><p>${escapeHtml(note.text)}</p></article>`).join('')}${notes.length ? '' : `<div class="notes-empty">${icons.note}<p>Aucune note pour le moment.</p><button class="text-button" data-action="new-note" data-id="${student.id}">Écrire une première note</button></div>`}</div>
     </aside>`;
