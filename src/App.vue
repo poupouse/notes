@@ -6,10 +6,12 @@ import AppModalHost from './components/AppModalHost.vue';
 import AppSidebar from './components/AppSidebar.vue';
 import CompetenciesPage from './components/CompetenciesPage.vue';
 import DictationsPage from './components/DictationsPage.vue';
+import EvaluationsPage from './components/EvaluationsPage.vue';
 import StudentsPage from './components/StudentsPage.vue';
 import type { AppPage, AppShellSnapshot, LegacyAppController } from './ui/app-navigation';
 import type { CompetenciesPageSnapshot } from './ui/competencies-page';
 import type { DictationsPageSnapshot } from './ui/dictations-page';
+import type { EvaluationsPageSnapshot } from './ui/evaluations-page';
 import type { LegacyModalBridge, LegacyModalRequest } from './ui/legacy-modal';
 import type { StudentsPageSnapshot } from './ui/students-page';
 
@@ -26,6 +28,7 @@ const shell = reactive<AppShellSnapshot>({
 const modalRequest = shallowRef<LegacyModalRequest>();
 const competenciesSnapshot = shallowRef<CompetenciesPageSnapshot>();
 const dictationsSnapshot = shallowRef<DictationsPageSnapshot>();
+const evaluationsSnapshot = shallowRef<EvaluationsPageSnapshot>();
 const studentsSnapshot = shallowRef<StudentsPageSnapshot>();
 const modalError = ref('');
 let controller: LegacyAppController | undefined;
@@ -81,6 +84,10 @@ const removeStudent = (id: string): void => controller?.students.remove(id);
 const addStudentNote = (id: string): void => controller?.students.addNote(id);
 const removeStudentNote = (studentId: string, noteId: string): void =>
   controller?.students.removeNote(studentId, noteId);
+const searchEvaluations = (value: string): void => controller?.evaluations.setSearch(value);
+const selectEvaluationSubject = (id: string): void => controller?.evaluations.selectSubject(id);
+const mountEvaluationGrid = (element: HTMLElement): void => controller?.evaluations.mountGrid(element);
+const unmountEvaluationGrid = (): void => controller?.evaluations.unmountGrid();
 
 onMounted(async () => {
   if (!legacyRoot.value) throw new Error('Legacy application root not found');
@@ -95,6 +102,9 @@ onMounted(async () => {
     },
     onDictationsChange(snapshot) {
       dictationsSnapshot.value = snapshot;
+    },
+    onEvaluationsChange(snapshot) {
+      evaluationsSnapshot.value = snapshot;
     },
     onStudentsChange(snapshot) {
       studentsSnapshot.value = snapshot;
@@ -154,10 +164,18 @@ onBeforeUnmount(() => {
       @add-note="addStudentNote"
       @remove-note="removeStudentNote"
     />
+    <EvaluationsPage
+      v-if="shell.page === 'evaluations' && evaluationsSnapshot"
+      :snapshot="evaluationsSnapshot"
+      @search="searchEvaluations"
+      @select-subject="selectEvaluationSubject"
+      @mount-grid="mountEvaluationGrid"
+      @unmount-grid="unmountEvaluationGrid"
+    />
     <div
-      v-show="shell.page === 'evaluations'"
       ref="legacyRoot"
       class="legacy-workspace-host"
+      hidden
     />
   </div>
   <AppModalHost

@@ -23,6 +23,7 @@ import type {
   CompetencyItemSnapshot,
 } from './ui/competencies-page';
 import type { DictationsPageSnapshot } from './ui/dictations-page';
+import type { EvaluationsPageSnapshot } from './ui/evaluations-page';
 import type {
   StudentDetailSnapshot,
   StudentSuccessGroupSnapshot,
@@ -37,13 +38,6 @@ interface EvaluationRow {
   subjectAverage?: number | null;
   [competencyId: string]: string | number | null | undefined;
 }
-
-const svg = (paths: string): string =>
-  `<span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true">${paths}</svg></span>`;
-
-const icons = {
-  search: svg('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>'),
-};
 
 const escapeHtml = (value: string): string => value.replace(/[&<>'"]/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
@@ -119,10 +113,10 @@ export const startApp = async (
   let studentSearch = '';
   let evaluationSearch = '';
   let dictationSearch = '';
+  let evaluationGridRevision = 0;
   let evaluationSubjectId = state.subjects.find((subject) =>
     state.competencies.some((competency) => competency.subjectId === subject.id))?.id ?? state.subjects[0]?.id ?? '';
   let evaluationGridApi: GridApi<EvaluationRow> | undefined;
-  const eventController = new AbortController();
   const collapsedGroups = new Set<string>();
   const uid = (prefix: string): string => {
     const randomValues = crypto.getRandomValues(new Uint32Array(2));
@@ -649,32 +643,29 @@ export const startApp = async (
     ];
   };
 
-  const evaluationsPage = (): string => {
+  const evaluationsSnapshot = (): EvaluationsPageSnapshot => {
     const selectedSubject = state.subjects.find((subject) => subject.id === evaluationSubjectId);
     const selectedCompetencyCount = state.competencies.filter((competency) => competency.subjectId === evaluationSubjectId).length;
-    return `
-    <main class="workspace evaluation-workspace">
-      <header class="page-header">
-        <div><p class="eyebrow">Suivi des acquis</p><h1>Évaluation</h1><p class="subtitle">Sélectionnez une case, saisissez 1, 2, 9 ou 0, puis naviguez avec les flèches.</p></div>
-        <div class="autosave-indicator"><span></span> Enregistrement automatique</div>
-      </header>
-      <div class="evaluation-tools">
-        <label class="search-field">${icons.search}<input type="search" data-search="evaluations" value="${escapeHtml(evaluationSearch)}" placeholder="Rechercher un élève…"></label>
-        <div class="status-legend">
-          ${statusOptions.map((option) => `<span title="${escapeHtml(option.label)}"><i class="legend-dot status-${option.className}"></i>${option.inputCode ? `<kbd>${option.inputCode}</kbd> = ${option.display}` : 'À passer'}</span>`).join('')}
-        </div>
-      </div>
-      <div class="evaluation-subject-tabs" role="tablist" aria-label="Choisir une matière">
-        ${state.subjects.map((subject, index) => {
-          const count = state.competencies.filter((competency) => competency.subjectId === subject.id).length;
-          return `<button role="tab" aria-selected="${subject.id === evaluationSubjectId}" class="evaluation-subject-tab ${subject.id === evaluationSubjectId ? 'active' : ''}" data-action="select-evaluation-subject" data-id="${subject.id}"><i class="subject-dot color-${index % 5}"></i><span>${escapeHtml(subject.name)}</span><b>${count}</b></button>`;
-        }).join('')}
-      </div>
-      <section class="evaluation-grid-card">
-        <div class="grid-help"><strong>${escapeHtml(selectedSubject?.name ?? 'Matière')}</strong><span>${state.students.length} élèves</span><span>${selectedCompetencyCount} compétence${selectedCompetencyCount > 1 ? 's' : ''}</span><span>Flèches : déplacer · 1/2/9/0 : noter</span></div>
-        <div id="evaluation-grid" class="evaluation-grid"></div>
-      </section>
-    </main>`;
+    return {
+      search: evaluationSearch,
+      gridRevision: evaluationGridRevision,
+      selectedSubjectName: selectedSubject?.name ?? 'Matière',
+      totalStudentCount: state.students.length,
+      selectedCompetencyCount,
+      legend: statusOptions.map((option) => ({
+        label: option.label,
+        display: option.display,
+        inputCode: option.inputCode,
+        className: option.className,
+      })),
+      subjects: state.subjects.map((subject, index) => ({
+        id: subject.id,
+        name: subject.name,
+        competencyCount: state.competencies.filter((competency) => competency.subjectId === subject.id).length,
+        colorIndex: index % 5,
+        selected: subject.id === evaluationSubjectId,
+      })),
+    };
   };
 
   const dictationWordCounts = (dictation: Dictation): [number, number, number] => {
@@ -745,9 +736,8 @@ export const startApp = async (
     };
   };
 
-  const mountEvaluationGrid = (): void => {
-    const gridElement = root.querySelector<HTMLElement>('#evaluation-grid');
-    if (!gridElement) return;
+  const mountEvaluationGrid = (gridElement: HTMLElement): void => {
+    evaluationGridApi?.destroy();
     const gridOptions: GridOptions<EvaluationRow> = {
       theme: evaluationTheme,
       rowData: evaluationRows(),
@@ -767,17 +757,15 @@ export const startApp = async (
   };
 
   const render = (): void => {
-    evaluationGridApi?.destroy();
-    evaluationGridApi = undefined;
+    if (page !== 'evaluations') {
+      evaluationGridApi?.destroy();
+      evaluationGridApi = undefined;
+    }
     options.onCompetenciesChange(page === 'competencies' ? competenciesSnapshot() : undefined);
     options.onDictationsChange(page === 'dictations' ? dictationsSnapshot() : undefined);
+    options.onEvaluationsChange(page === 'evaluations' ? evaluationsSnapshot() : undefined);
     options.onStudentsChange(page === 'students' ? studentsSnapshot() : undefined);
-    const pageContent = page === 'competencies' || page === 'students'
-      ? ''
-      : page === 'evaluations'
-        ? evaluationsPage()
-        : '';
-    root.innerHTML = pageContent;
+    root.replaceChildren();
     options.onShellChange({
       page,
       counts: {
@@ -787,7 +775,6 @@ export const startApp = async (
         dictations: state.dictations.length,
       },
     });
-    if (page === 'evaluations') window.requestAnimationFrame(mountEvaluationGrid);
   };
 
   const persist = (): void => {
@@ -996,21 +983,6 @@ export const startApp = async (
     return true;
   };
 
-  root.addEventListener('click', (event) => {
-    const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action]'); if (!button) return;
-    const action = button.dataset.action; const id = button.dataset.id;
-    if (action === 'select-evaluation-subject' && id) { evaluationSubjectId = id; render(); }
-  }, { signal: eventController.signal });
-
-  root.addEventListener('input', (event) => {
-    const input = (event.target as HTMLElement).closest<HTMLInputElement>('[data-search]'); if (!input) return;
-    if (input.dataset.search === 'evaluations') {
-      evaluationSearch = input.value;
-      evaluationGridApi?.setGridOption('quickFilterText', evaluationSearch);
-      return;
-    }
-  }, { signal: eventController.signal });
-
   render();
 
   return {
@@ -1057,6 +1029,26 @@ export const startApp = async (
       },
       moveCompetency(competencyId, groupId, targetId, afterTarget) {
         if (moveCompetency(competencyId, groupId, targetId, afterTarget)) persist();
+      },
+    },
+    evaluations: {
+      setSearch(value) {
+        evaluationSearch = value;
+        options.onEvaluationsChange(page === 'evaluations' ? evaluationsSnapshot() : undefined);
+        evaluationGridApi?.setGridOption('quickFilterText', evaluationSearch);
+      },
+      selectSubject(subjectId) {
+        if (evaluationSubjectId === subjectId) return;
+        evaluationGridApi?.destroy();
+        evaluationGridApi = undefined;
+        evaluationSubjectId = subjectId;
+        evaluationGridRevision += 1;
+        render();
+      },
+      mountGrid: mountEvaluationGrid,
+      unmountGrid() {
+        evaluationGridApi?.destroy();
+        evaluationGridApi = undefined;
       },
     },
     dictations: {
@@ -1111,7 +1103,6 @@ export const startApp = async (
       render();
     },
     destroy() {
-      eventController.abort();
       evaluationGridApi?.destroy();
       evaluationGridApi = undefined;
       closeModal();
