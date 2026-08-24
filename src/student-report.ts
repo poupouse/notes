@@ -71,10 +71,10 @@ const wrappedLabel = (value: string, maximumLength = 22): string[] => {
 
 const radarChart = (metrics: StudentReportMetric[]): string => {
   const width = 720;
-  const height = 360;
+  const height = 205;
   const centerX = width / 2;
-  const centerY = 174;
-  const radius = 112;
+  const centerY = 100;
+  const radius = 64;
   const count = metrics.length;
   const grid = [0.2, 0.4, 0.6, 0.8, 1].map((level) =>
     `<circle cx="${centerX}" cy="${centerY}" r="${radius * level}" class="radar-grid"/>`).join('');
@@ -96,7 +96,7 @@ const radarChart = (metrics: StudentReportMetric[]): string => {
       : `<line x1="${centerX}" y1="${centerY}" x2="${dataPoints[0]?.[0] ?? centerX}" y2="${dataPoints[0]?.[1] ?? centerY}" class="radar-result-line"/>`;
   const points = dataPoints.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="4.5" class="radar-point"/>`).join('');
   const labels = metrics.map((metric, index) => {
-    const [x, y] = pointOnCircle(centerX, centerY, radius + 50, index, count);
+    const [x, y] = pointOnCircle(centerX, centerY, radius + 24, index, count);
     const anchor = x < centerX - 25 ? 'end' : x > centerX + 25 ? 'start' : 'middle';
     const lines = wrappedLabel(metric.name).map((line, lineIndex) =>
       `<tspan x="${x}" dy="${lineIndex ? 13 : 0}">${escapeHtml(line)}</tspan>`).join('');
@@ -112,11 +112,11 @@ const shortChartLabel = (value: string): string => value.length > 15 ? `${value.
 
 const dictationChart = (dictations: StudentReportDictation[]): string => {
   const width = 720;
-  const height = 305;
+  const height = 215;
   const left = 52;
   const right = 24;
-  const top = 25;
-  const plotHeight = 205;
+  const top = 18;
+  const plotHeight = 125;
   const bottomY = top + plotHeight;
   const plotWidth = width - left - right;
   const xFor = (index: number): number => dictations.length <= 1
@@ -199,11 +199,11 @@ export const buildStudentReportHtml = (document: StudentReportDocument): string 
   }).join('');
 
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Synthèse des résultats</title><style>
-    @page{size:A4;margin:12mm 13mm 14mm}*{box-sizing:border-box}body{margin:0;color:#303832;background:#fff;font-family:Arial,sans-serif;font-size:10pt}
-    .student-page{min-height:270mm;display:flex;flex-direction:column;page-break-after:always}.student-page:last-child{page-break-after:auto}
-    .report-header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;padding:0 0 9mm;border-bottom:2px solid #41695a}.report-header p{margin:0 0 3mm;color:#c2754b;font-size:8pt;font-weight:700;letter-spacing:1.4px}.report-header h1{margin:0;color:#243d34;font-size:25pt;line-height:1}.student-name{min-width:55mm;padding:4mm 5mm;background:#f1f6f3;border-radius:3mm;text-align:right}.student-name small,.section-title small,.subject-header small{display:block;margin-bottom:1mm;color:#768079;font-size:7pt;font-weight:700;letter-spacing:.8px;text-transform:uppercase}.student-name strong{font-size:16pt;color:#294d40}.report-date{margin:4mm 0 6mm;color:#7b827d;font-size:8.5pt}
-    main{display:grid;gap:5mm}.subject-summary,.radar-block,.dictations-block{overflow:hidden;border:1px solid #d8ddd9;border-radius:3mm;break-inside:avoid}.section-title,.radar-header{display:flex;align-items:center;justify-content:space-between;min-height:16mm;padding:3mm 5mm;background:#f2f6f3;border-top:1.5mm solid #41695a}.section-title h2,.radar-header h2{margin:0;color:#294d40;font-size:14pt}.radar-header small{display:block;margin-bottom:1mm;color:#768079;font-size:7pt;font-weight:700;letter-spacing:.8px;text-transform:uppercase}.radar-header>strong{color:#294d40;font-size:16pt}.subject-summary-list{display:grid}.subject-summary-list>div{display:flex;align-items:center;justify-content:space-between;min-height:16mm;padding:3mm 6mm;border-top:1px solid #e1e3df;font-size:13pt}.subject-summary-list strong{color:#294d40;font-size:16pt}.radar-chart{display:block;width:100%;height:auto;background:#fff}.radar-grid{fill:none;stroke:#dce3df;stroke-width:1}.radar-axis{stroke:#cdd7d2;stroke-width:1}.radar-scale{fill:#a0aaa4;font-size:8px}.radar-result{fill:rgba(65,105,90,.24);stroke:#41695a;stroke-width:3;stroke-linejoin:round}.radar-result-line{fill:none;stroke:#41695a;stroke-width:4;stroke-linecap:round}.radar-point{fill:#fff;stroke:#d47a49;stroke-width:3}.radar-label{fill:#46514b;font-size:11px;font-weight:650}.radar-value{fill:#41695a;font-size:12px;font-weight:800}
-    .section-title{border-top-color:#c2754b;background:#fdf8f4}.section-title h2{color:#684b3a}.subject-summary-title{border-top-color:#41695a;background:#f2f6f3}.subject-summary-title h2{color:#294d40}.chart-heading-meta{display:grid;gap:2mm;justify-items:end}.chart-heading-meta>strong{color:#684b3a;font-size:10pt}.chart-legend{display:flex;gap:5mm;color:#6e756f;font-size:7pt}.chart-legend span:before{content:"";display:inline-block;width:8mm;margin-right:1.5mm;border-top:2px solid #d47a49;vertical-align:middle}.chart-legend span:last-child:before{border-color:#41695a;border-top-style:dashed}.dictation-chart{display:block;width:100%;height:auto;background:#fff}.line-grid{stroke:#e0e5e2;stroke-width:1}.line-y-label,.line-x-label{fill:#77817b;font-size:9px}.line-result{fill:none;stroke:#d47a49;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.line-point{fill:#fff;stroke:#d47a49;stroke-width:3}.line-value{fill:#9a5430;font-size:9px;font-weight:700}.line-trend{stroke:#41695a;stroke-width:2;stroke-dasharray:7 5}.line-missing{fill:#8b918c;font-size:9px;font-weight:800}.empty-chart{padding:10mm;color:#7c837e;text-align:center}
-    footer{margin-top:auto;padding-top:6mm;color:#8b918c;border-top:1px solid #e1e3df;font-size:7pt;text-align:center}
+    @page{size:A4;margin:8mm 10mm 10mm}*{box-sizing:border-box}body{margin:0;color:#303832;background:#fff;font-family:Arial,sans-serif;font-size:9pt}
+    .student-page{min-height:275mm;display:flex;flex-direction:column;page-break-after:always}.student-page:last-child{page-break-after:auto}
+    .report-header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:0 0 4mm;border-bottom:1.5px solid #41695a}.report-header p{margin:0 0 1.5mm;color:#c2754b;font-size:6.5pt;font-weight:700;letter-spacing:1.2px}.report-header h1{margin:0;color:#243d34;font-size:20pt;line-height:1}.student-name{min-width:42mm;padding:2.2mm 4mm;background:#f1f6f3;border-radius:2.5mm;text-align:right}.student-name small,.section-title small,.subject-header small{display:block;margin-bottom:.5mm;color:#768079;font-size:6pt;font-weight:700;letter-spacing:.7px;text-transform:uppercase}.student-name strong{font-size:13pt;color:#294d40}.report-date{margin:2mm 0 3mm;color:#7b827d;font-size:7pt}
+    main{display:grid;gap:2.5mm}.subject-summary,.radar-block,.dictations-block{overflow:hidden;border:1px solid #d8ddd9;border-radius:2.5mm;break-inside:avoid}.section-title,.radar-header{display:flex;align-items:center;justify-content:space-between;min-height:10.5mm;padding:1.5mm 4mm;background:#f2f6f3;border-top:1mm solid #41695a}.section-title h2,.radar-header h2{margin:0;color:#294d40;font-size:11.5pt}.radar-header small{display:block;margin-bottom:.5mm;color:#768079;font-size:6pt;font-weight:700;letter-spacing:.7px;text-transform:uppercase}.radar-header>strong{color:#294d40;font-size:13pt}.subject-summary-list{display:grid}.subject-summary-list>div{display:flex;align-items:center;justify-content:space-between;min-height:11mm;padding:2mm 5mm;border-top:1px solid #e1e3df;font-size:10pt}.subject-summary-list strong{color:#294d40;font-size:13pt}.radar-chart{display:block;width:100%;height:auto;background:#fff}.radar-grid{fill:none;stroke:#dce3df;stroke-width:1}.radar-axis{stroke:#cdd7d2;stroke-width:1}.radar-scale{fill:#a0aaa4;font-size:7px}.radar-result{fill:rgba(65,105,90,.24);stroke:#41695a;stroke-width:3;stroke-linejoin:round}.radar-result-line{fill:none;stroke:#41695a;stroke-width:4;stroke-linecap:round}.radar-point{fill:#fff;stroke:#d47a49;stroke-width:3}.radar-label{fill:#46514b;font-size:10px;font-weight:650}.radar-value{fill:#41695a;font-size:11px;font-weight:800}
+    .section-title{border-top-color:#c2754b;background:#fdf8f4}.section-title h2{color:#684b3a}.subject-summary-title{border-top-color:#41695a;background:#f2f6f3}.subject-summary-title h2{color:#294d40}.chart-heading-meta{display:grid;gap:1mm;justify-items:end}.chart-heading-meta>strong{color:#684b3a;font-size:8pt}.chart-legend{display:flex;gap:4mm;color:#6e756f;font-size:6pt}.chart-legend span:before{content:"";display:inline-block;width:7mm;margin-right:1mm;border-top:1.5px solid #d47a49;vertical-align:middle}.chart-legend span:last-child:before{border-color:#41695a;border-top-style:dashed}.dictation-chart{display:block;width:100%;height:auto;background:#fff}.line-grid{stroke:#e0e5e2;stroke-width:1}.line-y-label,.line-x-label{fill:#77817b;font-size:8px}.line-result{fill:none;stroke:#d47a49;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.line-point{fill:#fff;stroke:#d47a49;stroke-width:3}.line-value{fill:#9a5430;font-size:8px;font-weight:700}.line-trend{stroke:#41695a;stroke-width:2;stroke-dasharray:7 5}.line-missing{fill:#8b918c;font-size:8px;font-weight:800}.empty-chart{padding:7mm;color:#7c837e;text-align:center}
+    footer{margin-top:auto;padding-top:2mm;color:#8b918c;border-top:1px solid #e1e3df;font-size:6pt;text-align:center}
   </style></head><body>${studentPages}</body></html>`;
 };
