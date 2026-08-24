@@ -41,18 +41,6 @@ const updateSearch = (value: string | undefined): void => emit('search', value ?
       <div class="page-header-actions">
         <Button
           unstyled
-          class="secondary-button"
-          :disabled="!snapshot.totalStudentCount"
-          @click="emit('export-report')"
-        >
-          <span class="icon"><svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          ><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg></span>
-          Exporter le PDF
-        </Button>
-        <Button
-          unstyled
           class="primary-button"
           @click="emit('create')"
         >
@@ -84,16 +72,30 @@ const updateSearch = (value: string | undefined): void => emit('search', value ?
           @update:model-value="updateSearch"
         />
       </label>
-      <div class="summary-chip">
-        <span class="icon"><svg
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-        ><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle
-          cx="9"
-          cy="7"
-          r="4"
-        /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg></span>
-        {{ snapshot.totalStudentCount }} élèves
+      <div class="student-page-tool-actions">
+        <Button
+          unstyled
+          class="secondary-button student-pdf-export-button"
+          :disabled="!snapshot.totalStudentCount"
+          @click="emit('export-report')"
+        >
+          <span class="icon"><svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          ><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg></span>
+          Exporter la synthèse PDF
+        </Button>
+        <div class="summary-chip">
+          <span class="icon"><svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          ><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle
+            cx="9"
+            cy="7"
+            r="4"
+          /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg></span>
+          {{ snapshot.totalStudentCount }} élèves
+        </div>
       </div>
     </div>
 
