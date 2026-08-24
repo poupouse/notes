@@ -43,10 +43,126 @@ const escapeHtml = (value: string): string => value
 const rateLabel = (rate: number | null | undefined): string =>
   rate === null ? 'Non évalué' : rate === undefined ? '' : `${Math.round(rate * 100)} %`;
 
-const dictationLabel = (result: number | null | 'absent'): string => {
-  if (result === 'absent') return 'Absent';
-  if (result === null) return 'Non évalué';
-  return `${Math.round(result)} %`;
+const pointOnCircle = (
+  centerX: number,
+  centerY: number,
+  radius: number,
+  index: number,
+  count: number,
+): [number, number] => {
+  const angle = -Math.PI / 2 + (index * Math.PI * 2) / Math.max(1, count);
+  return [centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius];
+};
+
+const svgPoints = (points: Array<[number, number]>): string =>
+  points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+
+const wrappedLabel = (value: string, maximumLength = 22): string[] => {
+  const words = value.trim().split(/\s+/);
+  const lines: string[] = [];
+  words.forEach((word) => {
+    const current = lines[lines.length - 1];
+    if (!current || current.length + word.length + 1 > maximumLength) lines.push(word);
+    else lines[lines.length - 1] = `${current} ${word}`;
+  });
+  if (lines.length <= 2) return lines;
+  return [lines[0], `${lines.slice(1).join(' ').slice(0, maximumLength - 1)}…`];
+};
+
+const radarChart = (metrics: StudentReportMetric[]): string => {
+  const width = 720;
+  const height = 360;
+  const centerX = width / 2;
+  const centerY = 174;
+  const radius = 112;
+  const count = metrics.length;
+  const grid = [0.2, 0.4, 0.6, 0.8, 1].map((level) =>
+    `<circle cx="${centerX}" cy="${centerY}" r="${radius * level}" class="radar-grid"/>`).join('');
+  const axes = metrics.map((_, index) => {
+    const [x, y] = pointOnCircle(centerX, centerY, radius, index, count);
+    return `<line x1="${centerX}" y1="${centerY}" x2="${x}" y2="${y}" class="radar-axis"/>`;
+  }).join('');
+  const dataPoints = metrics.map((metric, index) => pointOnCircle(
+    centerX,
+    centerY,
+    radius * (metric.rate ?? 0),
+    index,
+    count,
+  ));
+  const shape = count >= 3
+    ? `<polygon points="${svgPoints(dataPoints)}" class="radar-result"/>`
+    : count === 2
+      ? `<polyline points="${svgPoints(dataPoints)}" class="radar-result-line"/>`
+      : `<line x1="${centerX}" y1="${centerY}" x2="${dataPoints[0]?.[0] ?? centerX}" y2="${dataPoints[0]?.[1] ?? centerY}" class="radar-result-line"/>`;
+  const points = dataPoints.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="4.5" class="radar-point"/>`).join('');
+  const labels = metrics.map((metric, index) => {
+    const [x, y] = pointOnCircle(centerX, centerY, radius + 50, index, count);
+    const anchor = x < centerX - 25 ? 'end' : x > centerX + 25 ? 'start' : 'middle';
+    const lines = wrappedLabel(metric.name).map((line, lineIndex) =>
+      `<tspan x="${x}" dy="${lineIndex ? 13 : 0}">${escapeHtml(line)}</tspan>`).join('');
+    const result = metric.rate === null ? 'Non évalué' : `${Math.round(metric.rate * 100)} %`;
+    return `<text x="${x}" y="${y - 5}" text-anchor="${anchor}" class="radar-label">${lines}<tspan x="${x}" dy="15" class="radar-value">${result}</tspan></text>`;
+  }).join('');
+  const scaleLabels = [20, 40, 60, 80, 100].map((value) =>
+    `<text x="${centerX + 4}" y="${centerY - radius * value / 100 + 10}" class="radar-scale">${value}</text>`).join('');
+  return `<svg class="radar-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Diagramme en toile des résultats">${grid}${axes}${scaleLabels}${shape}${points}${labels}</svg>`;
+};
+
+const shortChartLabel = (value: string): string => value.length > 15 ? `${value.slice(0, 13)}…` : value;
+
+const dictationChart = (dictations: StudentReportDictation[]): string => {
+  const width = 720;
+  const height = 305;
+  const left = 52;
+  const right = 24;
+  const top = 25;
+  const plotHeight = 205;
+  const bottomY = top + plotHeight;
+  const plotWidth = width - left - right;
+  const xFor = (index: number): number => dictations.length <= 1
+    ? left + plotWidth / 2
+    : left + index * (plotWidth / (dictations.length - 1));
+  const yFor = (value: number): number => top + ((100 - value) / 100) * plotHeight;
+  const ticks = [0, 20, 40, 60, 80, 100].map((value) => {
+    const y = yFor(value);
+    return `<line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" class="line-grid"/><text x="${left - 8}" y="${y + 4}" text-anchor="end" class="line-y-label">${value} %</text>`;
+  }).join('');
+  const numeric = dictations.map((dictation, index) => ({ dictation, index }))
+    .filter((item): item is { dictation: StudentReportDictation & { result: number }; index: number } => typeof item.dictation.result === 'number');
+  const segments: Array<typeof numeric> = [];
+  numeric.forEach((item) => {
+    const current = segments[segments.length - 1];
+    if (!current || current[current.length - 1].index !== item.index - 1) segments.push([item]);
+    else current.push(item);
+  });
+  const lines = segments.map((segment) => segment.length > 1
+    ? `<polyline points="${segment.map(({ dictation, index }) => `${xFor(index)},${yFor(dictation.result)}`).join(' ')}" class="line-result"/>`
+    : '').join('');
+  const points = numeric.map(({ dictation, index }) =>
+    `<circle cx="${xFor(index)}" cy="${yFor(dictation.result)}" r="4" class="line-point"/><text x="${xFor(index)}" y="${yFor(dictation.result) - 9}" text-anchor="middle" class="line-value">${Math.round(dictation.result)} %</text>`).join('');
+  let trend = '';
+  if (numeric.length >= 2) {
+    const count = numeric.length;
+    const sumX = numeric.reduce((sum, item) => sum + item.index, 0);
+    const sumY = numeric.reduce((sum, item) => sum + item.dictation.result, 0);
+    const sumXY = numeric.reduce((sum, item) => sum + item.index * item.dictation.result, 0);
+    const sumXX = numeric.reduce((sum, item) => sum + item.index * item.index, 0);
+    const denominator = count * sumXX - sumX * sumX;
+    if (denominator) {
+      const slope = (count * sumXY - sumX * sumY) / denominator;
+      const intercept = (sumY - slope * sumX) / count;
+      const clamp = (value: number): number => Math.max(0, Math.min(100, value));
+      const lastIndex = Math.max(0, dictations.length - 1);
+      trend = `<line x1="${xFor(0)}" y1="${yFor(clamp(intercept))}" x2="${xFor(lastIndex)}" y2="${yFor(clamp(intercept + slope * lastIndex))}" class="line-trend"/>`;
+    }
+  }
+  const labelInterval = Math.max(1, Math.ceil(dictations.length / 10));
+  const labels = dictations.map((dictation, index) => {
+    const resultMarker = dictation.result === 'absent' ? 'A' : dictation.result === null ? 'NE' : '';
+    const showLabel = index % labelInterval === 0 || index === dictations.length - 1;
+    return `${resultMarker ? `<text x="${xFor(index)}" y="${bottomY - 7}" text-anchor="middle" class="line-missing">${resultMarker}</text>` : ''}${showLabel ? `<text x="${xFor(index)}" y="${bottomY + 22}" text-anchor="middle" class="line-x-label">${escapeHtml(shortChartLabel(dictation.name))}<tspan x="${xFor(index)}" dy="12">Niv. ${dictation.level}</tspan></text>` : ''}`;
+  }).join('');
+  return `<svg class="dictation-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Courbe de progression en dictée">${ticks}${trend}${lines}${points}${labels}</svg>`;
 };
 
 export const buildStudentReportHtml = (document: StudentReportDocument): string => {
@@ -54,25 +170,21 @@ export const buildStudentReportHtml = (document: StudentReportDocument): string 
     day: 'numeric', month: 'long', year: 'numeric',
   }).format(document.generatedAt);
   const studentPages = document.students.map((student) => {
-    const subjects = student.subjects.map((subject) => {
-      const subjectRate = subject.rate === undefined ? '' : `<strong>${rateLabel(subject.rate)}</strong>`;
-      const metrics = subject.metrics.map((metric) => `
-        <div class="metric ${metric.colored ? `color-${metric.colorIndex}` : 'plain'}">
-          <div><small>${metric.kind === 'group' ? 'Groupe' : 'Sous-groupe'}</small><span>${escapeHtml(metric.name)}</span></div>
-          <strong>${rateLabel(metric.rate)}</strong>
-        </div>`).join('');
-      return `
-        <section class="subject-block">
-          <header class="subject-header"><div><small>Matière</small><h2>${escapeHtml(subject.name)}</h2></div>${subjectRate}</header>
-          ${metrics ? `<div class="metrics">${metrics}</div>` : ''}
-        </section>`;
-    }).join('');
+    const simpleSubjects = student.subjects.filter((subject) => !subject.metrics.length);
+    const radarSubjects = student.subjects.filter((subject) => subject.metrics.length);
+    const subjects = `${simpleSubjects.length ? `
+      <section class="subject-summary">
+        <header class="section-title subject-summary-title"><div><small>Matières</small><h2>Résultats par matière</h2></div></header>
+        <div class="subject-summary-list">${simpleSubjects.map((subject) => `<div><span>${escapeHtml(subject.name)}</span><strong>${rateLabel(subject.rate)}</strong></div>`).join('')}</div>
+      </section>` : ''}${radarSubjects.map((subject) => `
+      <section class="radar-block">
+        <header class="radar-header"><div><small>Matière - groupes et sous-groupes</small><h2>${escapeHtml(subject.name)}</h2></div>${subject.rate === undefined ? '' : `<strong>${rateLabel(subject.rate)}</strong>`}</header>
+        ${radarChart(subject.metrics)}
+      </section>`).join('')}`;
     const dictations = student.dictations ? `
       <section class="dictations-block">
-        <header class="section-title"><div><small>Dictée</small><h2>Résultats de dictée</h2></div></header>
-        <table><thead><tr><th>Dictée</th><th>Niveau</th><th>Résultat</th></tr></thead><tbody>
-          ${student.dictations.map((dictation) => `<tr><td>${escapeHtml(dictation.name)}</td><td>Niveau ${dictation.level}</td><td><strong>${dictationLabel(dictation.result)}</strong></td></tr>`).join('')}
-        </tbody></table>
+        <header class="section-title"><div><small>Dictées</small><h2>Courbe de progression</h2></div><div class="chart-heading-meta"><strong>${escapeHtml(student.firstName)}</strong><div class="chart-legend"><span>Résultats</span><span>Tendance</span></div></div></header>
+        ${student.dictations.length ? dictationChart(student.dictations) : '<p class="empty-chart">Aucun résultat de dictée.</p>'}
       </section>` : '';
     return `
       <article class="student-page">
@@ -90,9 +202,8 @@ export const buildStudentReportHtml = (document: StudentReportDocument): string 
     @page{size:A4;margin:12mm 13mm 14mm}*{box-sizing:border-box}body{margin:0;color:#303832;background:#fff;font-family:Arial,sans-serif;font-size:10pt}
     .student-page{min-height:270mm;display:flex;flex-direction:column;page-break-after:always}.student-page:last-child{page-break-after:auto}
     .report-header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;padding:0 0 9mm;border-bottom:2px solid #41695a}.report-header p{margin:0 0 3mm;color:#c2754b;font-size:8pt;font-weight:700;letter-spacing:1.4px}.report-header h1{margin:0;color:#243d34;font-size:25pt;line-height:1}.student-name{min-width:55mm;padding:4mm 5mm;background:#f1f6f3;border-radius:3mm;text-align:right}.student-name small,.section-title small,.subject-header small{display:block;margin-bottom:1mm;color:#768079;font-size:7pt;font-weight:700;letter-spacing:.8px;text-transform:uppercase}.student-name strong{font-size:16pt;color:#294d40}.report-date{margin:4mm 0 6mm;color:#7b827d;font-size:8.5pt}
-    main{display:grid;gap:5mm}.subject-block,.dictations-block{overflow:hidden;border:1px solid #d8ddd9;border-radius:3mm;break-inside:avoid}.subject-header,.section-title{display:flex;align-items:center;justify-content:space-between;min-height:16mm;padding:3mm 5mm;background:#f2f6f3;border-top:1.5mm solid #41695a}.subject-header h2,.section-title h2{margin:0;color:#294d40;font-size:14pt}.subject-header>strong{font-size:16pt;color:#294d40}.metrics{display:grid;grid-template-columns:1fr 1fr}.metric{min-height:15mm;display:flex;align-items:center;justify-content:space-between;gap:5mm;padding:3mm 4mm;border-top:1px solid var(--border,#d8ddd9);border-right:1px solid var(--border,#d8ddd9);background:var(--bg,#fff);color:var(--ink,#3e4641)}.metric:nth-child(even){border-right:0}.metric small{display:block;margin-bottom:1mm;font-size:6.5pt;font-weight:700;letter-spacing:.5px;text-transform:uppercase;opacity:.72}.metric span{font-size:9.5pt}.metric strong{white-space:nowrap;font-size:11pt}.plain{--bg:#fff;--ink:#3e4641;--border:#d8ddd9}
-    .color-0{--bg:#e7f2ed;--ink:#285d49;--border:#bdd8cb}.color-1{--bg:#f8edda;--ink:#80571a;--border:#ead0a3}.color-2{--bg:#e9eef8;--ink:#425f91;--border:#c8d3e9}.color-3{--bg:#f5e8ed;--ink:#8a4b64;--border:#e5c5d1}.color-4{--bg:#eee9f7;--ink:#67518e;--border:#d5c9e9}.color-5{--bg:#e5f2f3;--ink:#346a6e;--border:#bedcdf}.color-6{--bg:#f2eddf;--ink:#74612d;--border:#ded2ad}.color-7{--bg:#eaf1e2;--ink:#526d37;--border:#cbdcba}
-    .section-title{border-top-color:#c2754b;background:#fdf8f4}.section-title h2{color:#684b3a}table{width:100%;border-collapse:collapse}th,td{padding:3mm 4mm;border-top:1px solid #e1e3df;text-align:left}th{color:#747c76;background:#fafaf8;font-size:7pt;text-transform:uppercase;letter-spacing:.5px}td:last-child,th:last-child{text-align:right}
+    main{display:grid;gap:5mm}.subject-summary,.radar-block,.dictations-block{overflow:hidden;border:1px solid #d8ddd9;border-radius:3mm;break-inside:avoid}.section-title,.radar-header{display:flex;align-items:center;justify-content:space-between;min-height:16mm;padding:3mm 5mm;background:#f2f6f3;border-top:1.5mm solid #41695a}.section-title h2,.radar-header h2{margin:0;color:#294d40;font-size:14pt}.radar-header small{display:block;margin-bottom:1mm;color:#768079;font-size:7pt;font-weight:700;letter-spacing:.8px;text-transform:uppercase}.radar-header>strong{color:#294d40;font-size:16pt}.subject-summary-list{display:grid}.subject-summary-list>div{display:flex;align-items:center;justify-content:space-between;min-height:16mm;padding:3mm 6mm;border-top:1px solid #e1e3df;font-size:13pt}.subject-summary-list strong{color:#294d40;font-size:16pt}.radar-chart{display:block;width:100%;height:auto;background:#fff}.radar-grid{fill:none;stroke:#dce3df;stroke-width:1}.radar-axis{stroke:#cdd7d2;stroke-width:1}.radar-scale{fill:#a0aaa4;font-size:8px}.radar-result{fill:rgba(65,105,90,.24);stroke:#41695a;stroke-width:3;stroke-linejoin:round}.radar-result-line{fill:none;stroke:#41695a;stroke-width:4;stroke-linecap:round}.radar-point{fill:#fff;stroke:#d47a49;stroke-width:3}.radar-label{fill:#46514b;font-size:11px;font-weight:650}.radar-value{fill:#41695a;font-size:12px;font-weight:800}
+    .section-title{border-top-color:#c2754b;background:#fdf8f4}.section-title h2{color:#684b3a}.subject-summary-title{border-top-color:#41695a;background:#f2f6f3}.subject-summary-title h2{color:#294d40}.chart-heading-meta{display:grid;gap:2mm;justify-items:end}.chart-heading-meta>strong{color:#684b3a;font-size:10pt}.chart-legend{display:flex;gap:5mm;color:#6e756f;font-size:7pt}.chart-legend span:before{content:"";display:inline-block;width:8mm;margin-right:1.5mm;border-top:2px solid #d47a49;vertical-align:middle}.chart-legend span:last-child:before{border-color:#41695a;border-top-style:dashed}.dictation-chart{display:block;width:100%;height:auto;background:#fff}.line-grid{stroke:#e0e5e2;stroke-width:1}.line-y-label,.line-x-label{fill:#77817b;font-size:9px}.line-result{fill:none;stroke:#d47a49;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.line-point{fill:#fff;stroke:#d47a49;stroke-width:3}.line-value{fill:#9a5430;font-size:9px;font-weight:700}.line-trend{stroke:#41695a;stroke-width:2;stroke-dasharray:7 5}.line-missing{fill:#8b918c;font-size:9px;font-weight:800}.empty-chart{padding:10mm;color:#7c837e;text-align:center}
     footer{margin-top:auto;padding-top:6mm;color:#8b918c;border-top:1px solid #e1e3df;font-size:7pt;text-align:center}
   </style></head><body>${studentPages}</body></html>`;
 };
