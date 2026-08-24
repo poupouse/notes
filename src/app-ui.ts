@@ -377,6 +377,7 @@ export const startApp = async (
       return container;
     }
     const percentage = Math.round(value * 100);
+    if (percentage < 60) container.classList.add('difficulty');
     const label = document.createElement('strong');
     label.textContent = `${percentage} %`;
     const track = document.createElement('span');

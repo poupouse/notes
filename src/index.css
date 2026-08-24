@@ -80,6 +80,9 @@
 .average-display strong{font-size:10px;font-variant-numeric:tabular-nums}
 .average-display>span{width:58px;height:3px;overflow:hidden;background:#e2e7e3;border-radius:99px}
 .average-display>span i{height:100%;display:block;background:#5b8c76;border-radius:inherit;transition:width .18s ease}
+.average-display.difficulty{color:#a23e38}
+.average-display.difficulty>span{background:#f2d9d6}
+.average-display.difficulty>span i{background:#c5534b}
 .average-display.empty{color:#a1a59f;font-size:13px}
 .evaluation-grid .ag-cell-inline-editing{padding:4px;background:#fff;box-shadow:inset 0 0 0 2px var(--green)}
 .evaluation-grid .ag-select{width:100%;height:100%}
