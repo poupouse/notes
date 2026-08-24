@@ -73,7 +73,10 @@ const scoreIndex = computed(() => new Map(
 
 const scoreFor = (studentId: string, dictationId: string): DictationScoreSnapshot | undefined =>
   scoreIndex.value.get(`${studentId}\u0000${dictationId}`);
-const rateTone = (rate: number): string => rate >= 90 ? 'success' : rate >= 80 ? 'warning' : 'danger';
+const rateTone = (rate: number): string => {
+  const displayedRate = Number(rate.toFixed(2));
+  return displayedRate >= 90 ? 'success' : displayedRate >= 80 ? 'warning' : 'danger';
+};
 const scoreClass = (score?: DictationScoreSnapshot): string => {
   if (!score || score.kind === 'empty') return 'empty';
   if (score.kind === 'absent') return 'absent';
