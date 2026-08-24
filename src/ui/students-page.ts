@@ -63,4 +63,5 @@ export interface StudentsPageController {
   remove: (studentId: string) => void;
   addNote: (studentId: string) => void;
   removeNote: (studentId: string, noteId: string) => void;
+  exportReport: () => void;
 }

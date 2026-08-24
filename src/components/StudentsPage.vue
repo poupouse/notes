@@ -19,6 +19,7 @@ const emit = defineEmits<{
   (event: 'remove', studentId: string): void;
   (event: 'add-note', studentId: string): void;
   (event: 'remove-note', studentId: string, noteId: string): void;
+  (event: 'export-report'): void;
 }>();
 
 const rateLabel = (rate: number | null): string => rate === null ? '—' : `${Math.round(rate * 100)} %`;
@@ -37,17 +38,31 @@ const updateSearch = (value: string | undefined): void => emit('search', value ?
           Gardez les informations essentielles et vos observations à portée de main.
         </p>
       </div>
-      <Button
-        unstyled
-        class="primary-button"
-        @click="emit('create')"
-      >
-        <span class="icon"><svg
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-        ><path d="M12 5v14M5 12h14" /></svg></span>
-        Nouvel élève
-      </Button>
+      <div class="page-header-actions">
+        <Button
+          unstyled
+          class="secondary-button"
+          :disabled="!snapshot.totalStudentCount"
+          @click="emit('export-report')"
+        >
+          <span class="icon"><svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          ><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg></span>
+          Exporter le PDF
+        </Button>
+        <Button
+          unstyled
+          class="primary-button"
+          @click="emit('create')"
+        >
+          <span class="icon"><svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          ><path d="M12 5v14M5 12h14" /></svg></span>
+          Nouvel élève
+        </Button>
+      </div>
     </header>
 
     <div class="page-tools">

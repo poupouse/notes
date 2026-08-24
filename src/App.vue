@@ -83,6 +83,7 @@ const removeStudent = (id: string): void => controller?.students.remove(id);
 const addStudentNote = (id: string): void => controller?.students.addNote(id);
 const removeStudentNote = (studentId: string, noteId: string): void =>
   controller?.students.removeNote(studentId, noteId);
+const exportStudentReport = (): void => controller?.students.exportReport();
 const searchEvaluations = (value: string): void => controller?.evaluations.setSearch(value);
 const selectEvaluationSubject = (id: string): void => controller?.evaluations.selectSubject(id);
 const mountEvaluationGrid = (element: HTMLElement): void => controller?.evaluations.mountGrid(element);
@@ -161,6 +162,7 @@ onBeforeUnmount(() => {
       @remove="removeStudent"
       @add-note="addStudentNote"
       @remove-note="removeStudentNote"
+      @export-report="exportStudentReport"
     />
     <EvaluationsPage
       v-if="shell.page === 'evaluations' && evaluationsSnapshot"

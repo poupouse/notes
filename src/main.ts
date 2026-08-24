@@ -1,9 +1,11 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 
 import type { AppState } from './app-state';
+import { PDF_EXPORT_CHANNELS, type PdfExportRequest, type PdfExportResult } from './pdf-export-contract';
 import { SqliteEventStore } from './sqlite-event-store';
 import { STORAGE_CHANNELS } from './storage-contract';
 
@@ -58,11 +60,53 @@ const configureStorage = (): void => {
   });
 };
 
+const isPdfExportRequest = (value: unknown): value is PdfExportRequest => {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<PdfExportRequest>;
+  return typeof candidate.html === 'string' && candidate.html.length > 0 && candidate.html.length <= 10_000_000 &&
+    typeof candidate.defaultFileName === 'string' && candidate.defaultFileName.length > 0 && candidate.defaultFileName.length <= 180;
+};
+
+const configurePdfExport = (): void => {
+  ipcMain.handle(PDF_EXPORT_CHANNELS.studentReport, async (event, request: unknown): Promise<PdfExportResult> => {
+    if (!isPdfExportRequest(request)) throw new Error('Invalid PDF export request');
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    const saveResult = await dialog.showSaveDialog(parent ?? undefined, {
+      title: 'Exporter la synthèse des élèves',
+      defaultPath: request.defaultFileName,
+      filters: [{ name: 'Document PDF', extensions: ['pdf'] }],
+      properties: ['createDirectory', 'showOverwriteConfirmation'],
+    });
+    if (saveResult.canceled || !saveResult.filePath) return { status: 'cancelled' };
+
+    const printWindow = new BrowserWindow({
+      show: false,
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    try {
+      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(request.html)}`);
+      const pdf = await printWindow.webContents.printToPDF({
+        pageSize: 'A4',
+        printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate: '<span></span>',
+        footerTemplate: '<div style="width:100%;font:8px Arial;color:#7b827d;text-align:right;padding:0 13mm"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
+        margins: { top: 0.12, bottom: 0.2, left: 0, right: 0 },
+      });
+      await writeFile(saveResult.filePath, pdf);
+      return { status: 'saved', filePath: saveResult.filePath };
+    } finally {
+      printWindow.destroy();
+    }
+  });
+};
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
   configureStorage();
+  configurePdfExport();
   createWindow();
 });
 

@@ -16,6 +16,7 @@ import {
 import { loadAppState, saveAppState, type AppState } from './app-state';
 import { CompetencyStatus } from './domain';
 import type { Competency, CompetencyGroup, Dictation, DictationLevel, Student } from './domain';
+import { buildStudentReportHtml, type StudentReportMetric, type StudentReportPage } from './student-report';
 import type { AppController, AppOptions, AppPage } from './ui/app-navigation';
 import type { AppModalField, AppModalOption } from './ui/app-modal';
 import type {
@@ -870,6 +871,112 @@ export const startApp = async (
     } });
   };
 
+  const studentReportModal = (): void => {
+    const groupCheckboxes = (subjectId: string, parentGroupId?: string, depth = 0): AppModalField[] =>
+      state.groups
+        .filter((group) => group.subjectId === subjectId && group.parentGroupId === parentGroupId)
+        .flatMap((group) => [
+          {
+            kind: 'checkbox' as const,
+            name: `report-group-${group.id}`,
+            label: `${depth ? 'Sous-groupe' : 'Groupe'} : ${group.name}`,
+            checked: true,
+          },
+          ...groupCheckboxes(subjectId, group.id, depth + 1),
+        ]);
+    const fields: AppModalField[] = state.subjects.map((subject) => ({
+      kind: 'group',
+      className: 'report-export-option-section',
+      fields: [
+        { kind: 'checkbox', name: `report-subject-${subject.id}`, label: `Matière : ${subject.name}`, checked: true },
+        ...groupCheckboxes(subject.id),
+      ],
+    }));
+    if (state.dictations.length) fields.push({
+      kind: 'group',
+      className: 'report-export-option-section dictation-export-option',
+      fields: [{ kind: 'checkbox', name: 'report-dictations', label: 'Dictées : tous les résultats', checked: true }],
+    });
+
+    modal({
+      eyebrow: 'Suivi des familles',
+      title: 'Exporter la synthèse PDF',
+      fields,
+      submit: 'Choisir l’emplacement',
+      save: async (data) => {
+        const selectedSubjectIds = new Set(state.subjects
+          .filter((subject) => data.has(`report-subject-${subject.id}`))
+          .map((subject) => subject.id));
+        const selectedGroupIds = new Set(state.groups
+          .filter((group) => data.has(`report-group-${group.id}`))
+          .map((group) => group.id));
+        const includeDictations = data.has('report-dictations');
+        if (!selectedSubjectIds.size && !selectedGroupIds.size && !includeDictations) {
+          error('Sélectionnez au moins une matière, un groupe, un sous-groupe ou les dictées.');
+          return;
+        }
+
+        const reportMetrics = (studentId: string, subjectId: string): StudentReportMetric[] => {
+          const metrics: StudentReportMetric[] = [];
+          const addGroups = (parentGroupId?: string, depth = 0): void => {
+            state.groups
+              .filter((group) => group.subjectId === subjectId && group.parentGroupId === parentGroupId)
+              .forEach((group) => {
+                const children = state.groups.filter((child) => child.parentGroupId === group.id);
+                if (selectedGroupIds.has(group.id)) metrics.push({
+                  id: group.id,
+                  name: group.name,
+                  kind: depth ? 'subgroup' : 'group',
+                  rate: studentSuccessRate(studentId, groupTreeCompetencies(group.id)),
+                  colorIndex: evaluationGroupColorIndex(subjectId, group.id),
+                  colored: depth > 0 || children.length === 0,
+                });
+                addGroups(group.id, depth + 1);
+              });
+          };
+          addGroups();
+          return metrics;
+        };
+        const orderedStudents = state.students.slice().sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'));
+        const reportStudents: StudentReportPage[] = orderedStudents.map((student) => ({
+          id: student.id,
+          firstName: student.firstName,
+          subjects: state.subjects
+            .filter((subject) => selectedSubjectIds.has(subject.id) || state.groups.some((group) =>
+              group.subjectId === subject.id && selectedGroupIds.has(group.id)))
+            .map((subject) => ({
+              id: subject.id,
+              name: subject.name,
+              rate: selectedSubjectIds.has(subject.id)
+                ? studentSuccessRate(student.id, state.competencies.filter((competency) => competency.subjectId === subject.id))
+                : undefined,
+              metrics: reportMetrics(student.id, subject.id),
+            })),
+          dictations: includeDictations ? state.dictations
+            .slice()
+            .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+            .map((dictation) => ({
+              id: dictation.id,
+              name: dictation.name,
+              level: studentDictationLevel(student.id, dictation),
+              result: dictationRate(student.id, dictation),
+            })) : undefined,
+        }));
+        try {
+          const today = new Date();
+          const result = await window.pdfExport.exportStudentReport({
+            html: buildStudentReportHtml({ generatedAt: today, students: reportStudents }),
+            defaultFileName: `synthese-resultats-${today.toISOString().slice(0, 10)}.pdf`,
+          });
+          if (result.status === 'saved' || result.status === 'cancelled') closeModal();
+        } catch (exportError) {
+          console.error('Unable to export student report', exportError);
+          error('Le PDF n’a pas pu être créé. Vérifiez l’emplacement choisi puis réessayez.');
+        }
+      },
+    });
+  };
+
   const dictationModal = (id?: string): void => {
     const dictation = state.dictations.find((item) => item.id === id);
     const wordCounts = dictation ? dictationWordCounts(dictation) : [20, 30, 40];
@@ -1151,6 +1258,7 @@ export const startApp = async (
         });
       },
       addNote: noteModal,
+      exportReport: studentReportModal,
       removeNote(studentId, noteId) {
         confirmDeletion('Supprimer cette note ?', 'Cette note de suivi ne sera plus visible.', () => {
           const student = state.students.find((item) => item.id === studentId);
