@@ -71,6 +71,16 @@ Après chaque modification de fichier, même petite :
 
 Pour les changements uniquement documentaires ou de configuration qui ne peuvent pas être rendus par l’application, exécuter tout de même `refresh.bat` si le script est disponible ; signaler seulement une impossibilité réelle de démarrer.
 
+## Maintenance des scripts de build et de développement
+
+`build.bat` et `refresh.bat` font partie intégrante du projet et doivent être maintenus avec le code. Toute modification de `package.json`, des dépendances, de Vite/Electron Forge, du mode de démarrage ou de la distribution Windows doit vérifier que les deux scripts restent cohérents et utilisables.
+
+- `refresh.bat` doit continuer à détecter Node.js, vérifier les dépendances et lancer le développement Electron/Vite avec HMR.
+- `build.bat` doit continuer à détecter Node.js/npm, installer les dépendances si nécessaire, lancer ESLint, produire le package Electron Windows et vérifier le résultat dans `out/`.
+- Préserver les modes `--check` et, pour `build.bat`, `--no-pause`, sauf raison explicite de les faire évoluer.
+- Après toute modification de l’un de ces scripts, ou de ce qu’il orchestre, exécuter `refresh.bat` puis vérifier aussi les scripts avec `refresh.bat --check` et `build.bat --check`. Lorsque le contexte le permet, lancer également le build complet avec `build.bat --no-pause`.
+- Ne pas contourner silencieusement les cas où Node.js/npm ne sont pas dans le PATH : les scripts prennent déjà en charge les emplacements Windows et runtimes Codex usuels.
+
 ## Git : ne pas laisser la gestion au hasard
 
 Gérer Git au fil de l’eau, sans attendre la fin d’une longue session :
