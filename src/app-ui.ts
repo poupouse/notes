@@ -57,6 +57,19 @@ const statusOptions: readonly StatusOption[] = [
   { value: CompetencyStatus.Absent, label: 'Absent', display: '', inputCode: null, className: 'absent' },
 ];
 
+const competencyStatusScore = (status: CompetencyStatus): number => {
+  if (status === CompetencyStatus.Validated) return 1;
+  if (status === CompetencyStatus.InProgress) return 0.5;
+  return 0;
+};
+
+const successRateFromStatuses = (statuses: CompetencyStatus[]): number | null => {
+  const countedStatuses = statuses.filter((status) => status !== CompetencyStatus.NotTaken);
+  if (!countedStatuses.length) return null;
+  return countedStatuses.reduce((total, status) => total + competencyStatusScore(status), 0)
+    / countedStatuses.length;
+};
+
 const evaluationTheme = themeQuartz.withParams({
   accentColor: '#41695a',
   backgroundColor: '#ffffff',
@@ -219,9 +232,7 @@ export const startApp = async (
   const studentSuccessRate = (studentId: string, competencies: Competency[]): number | null => {
     const statuses = competencies.map((competency) => state.competencyStatuses.find((item) =>
       item.studentId === studentId && item.competencyId === competency.id)?.status ?? CompetencyStatus.NotTaken);
-    const passed = statuses.filter((status) => status !== CompetencyStatus.NotTaken);
-    if (!passed.length) return null;
-    return passed.filter((status) => status === CompetencyStatus.Validated).length / passed.length;
+    return successRateFromStatuses(statuses);
   };
 
   const groupTreeCompetencies = (groupId: string): Competency[] => {
@@ -360,12 +371,9 @@ export const startApp = async (
   const subjectAverage = (row?: EvaluationRow): number | null => {
     if (!row) return null;
     const competencyIds = competenciesForSubject(evaluationSubjectId).map((competency) => competency.id);
-    const countedValues = competencyIds
-      .map((competencyId) => row[competencyId])
-      .filter((status) => status !== 'Non passée');
-    if (!countedValues.length) return null;
-    const validatedCount = countedValues.filter((status) => status === 'Validée').length;
-    return validatedCount / countedValues.length;
+    const statuses = competencyIds.map((competencyId) =>
+      statusOptions.find((option) => option.label === row[competencyId])?.value ?? CompetencyStatus.NotTaken);
+    return successRateFromStatuses(statuses);
   };
 
   const renderAverage = (value: number | null | undefined): HTMLElement => {
@@ -396,14 +404,8 @@ export const startApp = async (
       ? renderAverage(typeof params.value === 'number' ? params.value : null)
       : statusRenderer(params);
 
-  const averageFromStatuses = (statuses: CompetencyStatus[]): number | null => {
-    const countedStatuses = statuses.filter((status) => status !== CompetencyStatus.NotTaken);
-    if (!countedStatuses.length) return null;
-    return countedStatuses.filter((status) => status === CompetencyStatus.Validated).length / countedStatuses.length;
-  };
-
   const competencyAverage = (competencyId: string): number | null =>
-    averageFromStatuses(state.students.map((student) =>
+    successRateFromStatuses(state.students.map((student) =>
       state.competencyStatuses.find((item) =>
         item.studentId === student.id && item.competencyId === competencyId)?.status ?? CompetencyStatus.NotTaken));
 
@@ -413,7 +415,7 @@ export const startApp = async (
     competencyIds.forEach((competencyId) => {
       row[competencyId] = competencyAverage(competencyId);
     });
-    row.subjectAverage = averageFromStatuses(competencyIds.flatMap((competencyId) =>
+    row.subjectAverage = successRateFromStatuses(competencyIds.flatMap((competencyId) =>
       state.students.map((student) =>
         state.competencyStatuses.find((item) =>
           item.studentId === student.id && item.competencyId === competencyId)?.status ?? CompetencyStatus.NotTaken)));
