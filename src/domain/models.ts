@@ -91,6 +91,7 @@ export interface StudentDictationResult {
 }
 
 export enum CompetencyStatus {
+  ValidatedPlus = 'validated_plus',
   Validated = 'validated',
   Failed = 'failed',
   InProgress = 'in_progress',
@@ -102,6 +103,7 @@ export enum CompetencyStatus {
 export const COMPETENCY_STATUS_LABELS: Readonly<
   Record<CompetencyStatus, string>
 > = {
+  [CompetencyStatus.ValidatedPlus]: 'Compétence parfaitement validée',
   [CompetencyStatus.Validated]: 'Compétence validée',
   [CompetencyStatus.Failed]: 'Compétence ratée',
   [CompetencyStatus.InProgress]: "Compétence en cours d’acquisition",

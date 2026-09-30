@@ -38,7 +38,7 @@ onBeforeUnmount(() => emit('unmount-grid'));
         </p>
         <h1>Évaluation</h1>
         <p class="subtitle">
-          Sélectionnez une case, saisissez 1, 2, 9 ou 0, puis naviguez avec les flèches.
+          Sélectionnez une case, saisissez 1+ pour une évaluation parfaite, 1, 2, 9 ou 0, puis naviguez avec les flèches.
         </p>
       </div>
       <div class="autosave-indicator">
@@ -110,7 +110,7 @@ onBeforeUnmount(() => emit('unmount-grid'));
         <strong>{{ snapshot.selectedSubjectName }}</strong>
         <span>{{ snapshot.totalStudentCount }} élèves</span>
         <span>{{ snapshot.selectedCompetencyCount }} compétence{{ snapshot.selectedCompetencyCount > 1 ? 's' : '' }}</span>
-        <span>Flèches : déplacer · 1/2/9/0 : noter</span>
+        <span>Flèches : déplacer · 1+/1/2/9/0 : noter</span>
       </div>
       <div
         ref="gridHost"

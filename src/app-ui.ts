@@ -45,11 +45,12 @@ interface StatusOption {
   value: CompetencyStatus;
   label: string;
   display: string;
-  inputCode: '0' | '1' | '2' | '9' | null;
+  inputCode: '0' | '1' | '1+' | '2' | '9' | null;
   className: string;
 }
 
 const statusOptions: readonly StatusOption[] = [
+  { value: CompetencyStatus.ValidatedPlus, label: 'Parfaitement validée', display: 'A+', inputCode: '1+', className: 'validated-plus' },
   { value: CompetencyStatus.Validated, label: 'Validée', display: 'A', inputCode: '1', className: 'validated' },
   { value: CompetencyStatus.InProgress, label: 'En cours', display: 'PA', inputCode: '2', className: 'in-progress' },
   { value: CompetencyStatus.Failed, label: 'Ratée', display: 'NA', inputCode: '9', className: 'failed' },
@@ -58,7 +59,7 @@ const statusOptions: readonly StatusOption[] = [
 ];
 
 const competencyStatusScore = (status: CompetencyStatus): number => {
-  if (status === CompetencyStatus.Validated) return 1;
+  if (status === CompetencyStatus.ValidatedPlus || status === CompetencyStatus.Validated) return 1;
   if (status === CompetencyStatus.InProgress) return 0.5;
   return 0;
 };
@@ -127,6 +128,8 @@ export const startApp = async (
   let evaluationSubjectId = state.subjects.find((subject) =>
     state.competencies.some((competency) => competency.subjectId === subject.id))?.id ?? state.subjects[0]?.id ?? '';
   let evaluationGridApi: GridApi<EvaluationRow> | undefined;
+  let pendingValidatedCell: { studentId: string; competencyId: string } | undefined;
+  let pendingValidatedTimer: number | undefined;
   const collapsedGroups = new Set<string>();
   const uid = (prefix: string): string => {
     const randomValues = crypto.getRandomValues(new Uint32Array(2));
@@ -541,12 +544,47 @@ export const startApp = async (
     if (event.node.rowPinned || !event.data) return;
     const keyboardEvent = event.event as KeyboardEvent;
     if (keyboardEvent.repeat) return;
-    const option = statusOptions.find((item) => item.inputCode === keyboardEvent.key);
     const competencyId = event.colDef.field;
-    if (!option || !competencyId || !state.competencies.some((item) => item.id === competencyId)) return;
+    if (!competencyId || !state.competencies.some((item) => item.id === competencyId)) return;
+
+    if ((keyboardEvent.key === '+' || keyboardEvent.key === '1+') &&
+      pendingValidatedCell?.studentId === event.data.studentId &&
+      pendingValidatedCell.competencyId === competencyId) {
+      keyboardEvent.preventDefault();
+      if (pendingValidatedTimer !== undefined) window.clearTimeout(pendingValidatedTimer);
+      pendingValidatedCell = undefined;
+      pendingValidatedTimer = undefined;
+      event.data[competencyId] = statusOptions[0].label;
+      storeEvaluationStatus(event.data.studentId, competencyId, CompetencyStatus.ValidatedPlus);
+      void saveAppState(state).catch((error: unknown) => {
+        console.error('Unable to persist evaluation status', error);
+      });
+      event.api.setGridOption('pinnedBottomRowData', [evaluationSummaryRow()]);
+      event.api.refreshCells({
+        rowNodes: [event.node],
+        columns: [competencyId, 'subjectAverage'],
+        force: true,
+      });
+      return;
+    }
+
+    const option = statusOptions.find((item) => item.inputCode === keyboardEvent.key && item.inputCode !== '1+');
+    if (!option) return;
     keyboardEvent.preventDefault();
     event.data[competencyId] = option.label;
     storeEvaluationStatus(event.data.studentId, competencyId, option.value);
+    if (option.value === CompetencyStatus.Validated) {
+      pendingValidatedCell = { studentId: event.data.studentId, competencyId };
+      if (pendingValidatedTimer !== undefined) window.clearTimeout(pendingValidatedTimer);
+      pendingValidatedTimer = window.setTimeout(() => {
+        pendingValidatedCell = undefined;
+        pendingValidatedTimer = undefined;
+      }, 700);
+    } else {
+      pendingValidatedCell = undefined;
+      if (pendingValidatedTimer !== undefined) window.clearTimeout(pendingValidatedTimer);
+      pendingValidatedTimer = undefined;
+    }
     void saveAppState(state).catch((error: unknown) => {
       console.error('Unable to persist evaluation status', error);
     });

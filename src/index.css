@@ -19,7 +19,7 @@
 .status-legend>span{display:flex;align-items:center;gap:5px;white-space:nowrap}
 .status-legend kbd{min-width:17px;padding:2px 4px;color:#465049;background:#fff;border:1px solid #d8dcd7;border-bottom-width:2px;border-radius:4px;font:700 8px ui-monospace,SFMono-Regular,Consolas,monospace;text-align:center}
 .legend-dot{width:6px;height:6px;display:inline-block;border-radius:50%}
-.legend-dot.status-validated{background:#55916d}.legend-dot.status-failed{background:#c8695f}.legend-dot.status-in-progress{background:#d7a23d}.legend-dot.status-not-taken{background:#a5aaa4}.legend-dot.status-absent{background:#758397}
+.legend-dot.status-validated-plus{background:#2f6f9f}.legend-dot.status-validated{background:#55916d}.legend-dot.status-failed{background:#c8695f}.legend-dot.status-in-progress{background:#d7a23d}.legend-dot.status-not-taken{background:#a5aaa4}.legend-dot.status-absent{background:#758397}
 .evaluation-subject-tabs{max-width:1600px;display:flex;align-items:flex-end;gap:3px;margin:0 auto -1px;padding:0 8px;overflow-x:auto;scrollbar-width:thin}
 .evaluation-subject-tab{min-width:max-content;display:flex;align-items:center;gap:7px;padding:8px 12px 9px;color:#737a74;background:transparent;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;font-size:10px;font-weight:650;cursor:pointer;transition:.15s ease}
 .evaluation-subject-tab:hover{color:var(--green);background:#edf2ef}
@@ -67,6 +67,7 @@
 .evaluation-grid .evaluation-cell-absent,.evaluation-grid .evaluation-cell-absent:hover{background:#dce9f7}
 .evaluation-grid .student-grid-cell{padding-left:10px;padding-right:10px;color:#303a34;font-family:Arial,sans-serif;font-size:12px;font-weight:600;background:#fcfcfa;white-space:nowrap}
 .evaluation-status{min-width:46px;display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border:1px solid transparent;border-radius:7px;font-size:10px;font-weight:800;letter-spacing:.25px;white-space:nowrap}
+.evaluation-status.status-validated-plus{color:#1f527b;background:#dcecf7;border-color:#a9cbe1}
 .evaluation-status.status-validated{color:#245e3c;background:#dcefe3;border-color:#b8dcc5}
 .evaluation-status.status-failed{color:#963f38;background:#f7dfdc;border-color:#e9bbb6}
 .evaluation-status.status-in-progress{color:#805d14;background:#faedc9;border-color:#e8d18f}
